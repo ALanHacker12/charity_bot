@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 import config
@@ -15,7 +16,7 @@ async def main():
     # Подключаем router
     dp.include_router(router)
     
-    # Запускаем бота (на хостинге используем polling)
+    # Запускаем бота
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
