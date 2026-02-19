@@ -1,4 +1,4 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 # Главное меню
 def get_main_keyboard():
@@ -51,7 +51,7 @@ def get_request_categories():
     )
     return keyboard
 
-# Кнопка возврата
+# Кнопка возврата (простая клавиатура с одной кнопкой)
 def get_back_keyboard():
     buttons = [
         [KeyboardButton(text="← Назад в главное меню")]
