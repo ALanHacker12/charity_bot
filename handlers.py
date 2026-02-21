@@ -401,3 +401,12 @@ async def skip_photo(message: Message, state: FSMContext):
     )
     await state.clear()
 
+# Пример отправки фото пользователю
+async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: str):
+    photo_file = FSInputFile(photo_path)
+    await bot.send_photo(
+        chat_id=chat_id,
+        photo=photo_file,
+        caption=caption
+    )
+
