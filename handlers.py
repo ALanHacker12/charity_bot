@@ -612,6 +612,7 @@ async def offer_handmade(message: Message, state: FSMContext):
     await message.answer("Расскажите, что именно вы можете сделать своими руками (например, 'Маскировочные сети, блиндажные свечи, нашлемники')")
     await state.set_state(HelpOffer.waiting_for_details)
 
+# --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ДЛЯ ДЕНЕГ ---
 @router.message(F.text == "💰 Помочь деньгами")
 async def offer_money(message: Message, state: FSMContext):
     """Обработка денежной помощи"""
@@ -626,7 +627,6 @@ async def offer_money(message: Message, state: FSMContext):
             parse_mode="Markdown"
         )
         
-        # Уведомление админу
         await notify_admin(
             message.bot, 
             "💰 Деньги", 
@@ -639,7 +639,6 @@ async def offer_money(message: Message, state: FSMContext):
             "Произошла ошибка. Пожалуйста, попробуйте позже.",
             reply_markup=nav.get_main_keyboard()
         )
-    await notify_admin(message.bot, "💰 Деньги", f"Пользователь {message.from_user.full_name} хочет помочь деньгами.")
 
 @router.message(F.text == "🧠 Оказываю психологическую помощь")
 async def offer_psych(message: Message, state: FSMContext):
@@ -647,7 +646,7 @@ async def offer_psych(message: Message, state: FSMContext):
     await message.answer("Расскажите о себе: кто вы по образованию, какой у вас опыт, как с вами связаться?")
     await state.set_state(HelpOffer.waiting_for_details)
 
-# --- НОВЫЙ ОБРАБОТЧИК ДЕТАЛЕЙ С ЗАПРОСОМ ФОТО ---
+# --- ОБРАБОТЧИК ДЕТАЛЕЙ С ЗАПРОСОМ ФОТО ---
 @router.message(HelpOffer.waiting_for_details)
 async def offer_details_handler(message: Message, state: FSMContext):
     if message.text == "← Назад в главное меню":
@@ -671,6 +670,18 @@ async def offer_details_handler(message: Message, state: FSMContext):
     )
     await state.set_state(HelpOffer.waiting_for_photo)
 
+# --- НОВЫЙ ОБРАБОТЧИК ДЛЯ КНОПКИ "ДОБАВИТЬ ФОТО" ---
+@router.message(HelpOffer.waiting_for_photo, F.text == "✅ Добавить фото")
+async def add_photo_button_handler(message: Message, state: FSMContext):
+    """Обработчик нажатия кнопки 'Добавить фото'"""
+    await message.answer(
+        "📸 Отправьте фото товаров:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+
 @router.message(HelpOffer.waiting_for_photo, F.content_type == ContentType.PHOTO)
 async def handle_photo(message: Message, state: FSMContext, bot: Bot):
     photo = message.photo[-1]
@@ -687,7 +698,7 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
         reply_markup=nav.get_main_keyboard()
     )
     
-    admin_chat_id = os.getenv('ADMIN_CHAT_ID', '123456789')
+    admin_chat_id = os.getenv('ADMIN_CHAT_ID', '366700120')
     caption = f"🔔 Новое предложение с фото!\nКатегория: {category}\nДетали: {details}"
     await bot.send_photo(chat_id=admin_chat_id, photo=file_id, caption=caption)
     
@@ -820,7 +831,7 @@ async def back_to_main(message: Message, state: FSMContext):
 
 # --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ УВЕДОМЛЕНИЙ АДМИНА ---
 async def notify_admin(bot, title: str, text: str):
-    admin_chat_id = os.getenv('ADMIN_CHAT_ID', '123456789')
+    admin_chat_id = os.getenv('ADMIN_CHAT_ID', '366700120')
     try:
         await bot.send_message(
             chat_id=admin_chat_id,
@@ -843,7 +854,3 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
-
-
-
-
