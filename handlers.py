@@ -308,4 +308,96 @@ async def notify_admin(bot, title: str, text: str):
         )
     except Exception as e:
         print(f"Не удалось отправить уведомление админу: {e}")
-       
+
+from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, FSInputFile
+from aiogram.enums import ContentType
+
+# Добавьте новое состояние для фото
+class HelpOffer(StatesGroup):
+    waiting_for_category = State()
+    waiting_for_details = State()
+    waiting_for_photo = State()  # Новое состояние для фото
+
+# Измените обработчик отправки продукции
+@router.message(F.text == "📦 Отправить продукцию")
+async def offer_product(message: Message, state: FSMContext):
+    await state.update_data(offer_type="product", category="Отправка продукции")
+    await message.answer(
+        "Расскажите, какую продукцию вы хотите отправить? "
+        "(например, 'Теплые носки, 20 пар, размер M')\n\n"
+        "После текста вы сможете прикрепить фото (по желанию)"
+    )
+    await state.set_state(HelpOffer.waiting_for_details)
+
+# Изменим обработчик деталей, чтобы после текста запрашивать фото
+@router.message(HelpOffer.waiting_for_details)
+async def offer_details_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message)
+        return
+    
+    # Сохраняем текст и переходим к запросу фото
+    await state.update_data(details=message.text)
+    
+    # Спрашиваем, хочет ли пользователь добавить фото
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="✅ Добавить фото")],
+            [KeyboardButton(text="⏭ Пропустить")]
+        ],
+        resize_keyboard=True
+    )
+    
+    await message.answer(
+        "Хотите добавить фото товаров?",
+        reply_markup=keyboard
+    )
+    await state.set_state(HelpOffer.waiting_for_photo)
+
+# Обработчик для фото
+@router.message(HelpOffer.waiting_for_photo, F.content_type == ContentType.PHOTO)
+async def handle_photo(message: Message, state: FSMContext, bot: Bot):
+    # Получаем file_id фото (самое большое качество)
+    photo = message.photo[-1]
+    file_id = photo.file_id
+    
+    # Сохраняем file_id
+    await state.update_data(photo_file_id=file_id)
+    
+    # Получаем все данные
+    user_data = await state.get_data()
+    category = user_data.get('category', 'Помощь')
+    details = user_data.get('details', '')
+    
+    await message.answer(
+        f"✅ Спасибо! Ваше предложение с фото принято!",
+        reply_markup=nav.get_main_keyboard()
+    )
+    
+    # Уведомление админу с фото
+    admin_chat_id = os.getenv('ADMIN_CHAT_ID', '123456789')
+    caption = f"🔔 Новое предложение с фото!\nКатегория: {category}\nДетали: {details}"
+    await bot.send_photo(chat_id=admin_chat_id, photo=file_id, caption=caption)
+    
+    await state.clear()
+
+# Обработчик пропуска фото
+@router.message(HelpOffer.waiting_for_photo, F.text == "⏭ Пропустить")
+async def skip_photo(message: Message, state: FSMContext):
+    user_data = await state.get_data()
+    category = user_data.get('category', 'Помощь')
+    details = user_data.get('details', '')
+    
+    await message.answer(
+        f"✅ Ваше предложение принято без фото!",
+        reply_markup=nav.get_main_keyboard()
+    )
+    
+    await notify_admin(
+        message.bot,
+        f"🤝 Предложение помощи: {category}",
+        f"От: {message.from_user.full_name}\nДетали: {details}"
+    )
+    await state.clear()
+
