@@ -7,7 +7,9 @@ def get_main_keyboard():
         [KeyboardButton(text="🆘 Нужна помощь (участник СВО/семья)")],
         [KeyboardButton(text="🏛️ Меры поддержки государства")],
         [KeyboardButton(text="🧠 Психологическая помощь")],
-        [KeyboardButton(text="👶 Помощь детям СВО")]
+        [KeyboardButton(text="👶 Помощь детям СВО")],
+        [KeyboardButton(text="🤝 Волонтерский раздел")],
+        [KeyboardButton(text="🤝 Стать волонтером")]
     ]
     
     keyboard = ReplyKeyboardMarkup(
@@ -56,6 +58,47 @@ def get_back_keyboard():
     buttons = [
         [KeyboardButton(text="← Назад в главное меню")]
     ]
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True
+    )
+    return keyboard
+
+# --- НОВЫЕ КЛАВИАТУРЫ ДЛЯ ВОЛОНТЕРСКОЙ СИСТЕМЫ ---
+
+def get_volunteer_keyboard():
+    """Клавиатура для волонтерского раздела"""
+    buttons = [
+        [KeyboardButton(text="👤 Моя статистика")],
+        [KeyboardButton(text="🏆 Рейтинг волонтеров")],
+        [KeyboardButton(text="👨‍👦 Создать семью")],
+        [KeyboardButton(text="📖 Моя семья")],
+        [KeyboardButton(text="📊 История баллов")],
+        [KeyboardButton(text="📝 Добавить доброе дело")],
+        [KeyboardButton(text="🏅 Топ семей")],
+        [KeyboardButton(text="← Назад в главное меню")]
+    ]
+    
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True
+    )
+    return keyboard
+
+def get_deed_types_keyboard():
+    """Клавиатура с типами добрых дел"""
+    buttons = [
+        [KeyboardButton(text="🛒 Помощь с покупками")],
+        [KeyboardButton(text="🤝 Простое общение")],
+        [KeyboardButton(text="🏠 Помощь по дому")],
+        [KeyboardButton(text="📚 Помощь с уроками")],
+        [KeyboardButton(text="🚶 Сопровождение")],
+        [KeyboardButton(text="📦 Доставка продуктов")],
+        [KeyboardButton(text="💊 Помощь с лекарствами")],
+        [KeyboardButton(text="🎨 Творческий мастер-класс")],
+        [KeyboardButton(text="← Назад")]
+    ]
+    
     keyboard = ReplyKeyboardMarkup(
         keyboard=buttons,
         resize_keyboard=True
