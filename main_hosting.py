@@ -3,6 +3,7 @@ import logging
 import os
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from database import init_db
 from handlers import router
 import config
 
@@ -12,11 +13,24 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+async def on_startup():
+    """Действия при запуске бота"""
+    logging.info("Инициализация базы данных...")
+    await init_db()
+    logging.info("База данных готова")
+
+async def on_shutdown():
+    """Действия при остановке бота"""
+    logging.info("Бот остановлен")
+
 async def main():
-    # Проверяем, есть ли токен
+    """Главная функция запуска бота"""
+    # Проверяем наличие токена
     if not config.TOKEN:
-        logging.error("Токен не найден! Проверьте переменные окружения.")
+        logging.error("Токен не найден! Проверьте переменные окружения или config.py")
         return
+    
+    logging.info("Запуск бота...")
     
     # Создаем объекты бота и диспетчера
     bot = Bot(token=config.TOKEN)
@@ -25,10 +39,17 @@ async def main():
     # Подключаем router с обработчиками
     dp.include_router(router)
     
-    logging.info("Бот запущен и готов к работе!")
+    # Регистрируем функции запуска и остановки
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
+    
+    logging.info("Бот успешно запущен и готов к работе!")
     
     # Запускаем бота
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
 if __name__ == '__main__':
     try:
@@ -36,4 +57,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logging.info("Бот остановлен пользователем")
     except Exception as e:
-        logging.error(f"Ошибка при запуске бота: {e}")
+        logging.error(f"Критическая ошибка: {e}")
