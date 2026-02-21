@@ -615,31 +615,24 @@ async def offer_handmade(message: Message, state: FSMContext):
 # --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ДЛЯ ДЕНЕГ ---
 @router.message(F.text == "💰 Помочь деньгами")
 async def offer_money(message: Message, state: FSMContext):
-    """Обработка денежной помощи"""
+    """Обработка денежной помощи - максимально простая версия"""
+    await message.answer(
+        "💰 Спасибо за готовность помочь финансово!\n\n"
+        "Реквизиты для перевода:\n"
+        "Сбербанк: +7 917 355 1122\n"
+        "Тинькофф: +7 917 355 1122\n\n"
+        "Или напишите @zilya_gafarova",
+        reply_markup=nav.get_main_keyboard()
+    )
+    
+    # Уведомление админу
     try:
-        await message.answer(
-            f"💰 **Спасибо за готовность помочь финансово!**\n\n"
-            f"**Реквизиты для перевода:**\n"
-            f"Сбербанк: +7 917 355 1122\n"
-            f"Тинькофф: +7 917 355 1122\n\n"
-            f"Или напишите @zilya_gafarova для уточнения деталей.",
-            reply_markup=nav.get_main_keyboard(),
-            parse_mode="Markdown"
+        await message.bot.send_message(
+            chat_id=366700120,
+            text=f"💰 Пользователь {message.from_user.full_name} хочет помочь деньгами."
         )
-        
-        await notify_admin(
-            message.bot, 
-            "💰 Деньги", 
-            f"Пользователь {message.from_user.full_name} хочет помочь деньгами."
-        )
-        print(f"✅ Обработана денежная помощь от {message.from_user.full_name}")
-    except Exception as e:
-        print(f"❌ Ошибка в offer_money: {e}")
-        await message.answer(
-            "Произошла ошибка. Пожалуйста, попробуйте позже.",
-            reply_markup=nav.get_main_keyboard()
-        )
-
+    except:
+        pass  # Игнорируем ошибки уведомления
 @router.message(F.text == "🧠 Оказываю психологическую помощь")
 async def offer_psych(message: Message, state: FSMContext):
     await state.update_data(offer_type="psych_offer", category="Психологическая помощь (оказываю)")
@@ -854,3 +847,4 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
+
