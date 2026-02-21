@@ -820,7 +820,6 @@ async def request_details_handler(message: Message, state: FSMContext):
     )
     await state.set_state(HelpRequest.waiting_for_phone)
 
-# --- НОВЫЙ ОБРАБОТЧИК ДЛЯ ТЕЛЕФОНА В ЗАПРОСАХ ПОМОЩИ ---
 @router.message(HelpRequest.waiting_for_phone)
 async def request_phone_handler(message: Message, state: FSMContext):
     if message.text == "← Назад в главное меню":
@@ -832,6 +831,16 @@ async def request_phone_handler(message: Message, state: FSMContext):
     user_data = await state.get_data()
     category = user_data.get('request_category', 'Запрос помощи')
     details = user_data.get('request_details', '')
+    
+    # 👇 ОТПРАВЛЯЕМ В GOOGLE SHEETS
+    sheets_client.add_request(
+        name=message.from_user.full_name,
+        phone=phone,
+        category=category,
+        details=details,
+        username=message.from_user.username or ""
+    )
+    print("📊 Запрос отправлен в Google Sheets")
     
     await message.answer(
         f"✅ Ваш запрос принят!\n\n"
@@ -882,5 +891,6 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
+
 
 
