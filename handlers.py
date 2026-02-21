@@ -815,4 +815,17 @@ async def notify_admin(bot, title: str, text: str):
 
 # --- ПРИМЕР ОТПРАВКИ ФОТО ПОЛЬЗОВАТЕЛЮ ---
 async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: str):
+    """
+    Отправка фото пользователю с отчетом
+    """
+    try:
+        photo = FSInputFile(photo_path)
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            caption=caption
+        )
+    except Exception as e:
+        print(f"Ошибка при отправке фото пользователю: {e}")
+
 
