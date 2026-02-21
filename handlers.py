@@ -612,7 +612,7 @@ async def offer_handmade(message: Message, state: FSMContext):
     await message.answer("Расскажите, что именно вы можете сделать своими руками (например, 'Маскировочные сети, блиндажные свечи, нашлемники')")
     await state.set_state(HelpOffer.waiting_for_details)
 
-@router.message(F.text == "💰 Помочь деньмигами")
+@router.message(F.text == "💰 Помочь деньгами")
 async def offer_money(message: Message, state: FSMContext):
     """Обработка денежной помощи"""
     try:
@@ -843,6 +843,7 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
+
 
 
 
