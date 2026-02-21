@@ -6,7 +6,7 @@ load_dotenv()
 
 # Токен бота (обязательно) - берем из переменных окружения!
 # ВАЖНО: На BotHost нужно добавить переменную TOKEN в настройках!
-TOKEN = os.getenv('TOKEN')
+TOKEN = os.getenv('8365109516:AAFrZj0fTHCriYKRJP9FJKgj7FGknXR3XK8')
 
 # ID администратора для уведомлений
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '366700120')
@@ -21,3 +21,4 @@ PAYMENT_DETAILS = {
     'tinkoff': '+7 917 355 1122',
     'contact': '@zilya_gafarova'
 }
+
