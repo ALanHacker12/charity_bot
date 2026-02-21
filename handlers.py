@@ -580,7 +580,6 @@ async def offer_details_handler(message: Message, state: FSMContext):
     )
     await state.set_state(HelpOffer.waiting_for_phone)
 
-# --- НОВЫЙ ОБРАБОТЧИК ДЛЯ ТЕЛЕФОНА ---
 @router.message(HelpOffer.waiting_for_phone)
 async def offer_phone_handler(message: Message, state: FSMContext):
     """Обработка номера телефона"""
@@ -593,9 +592,20 @@ async def offer_phone_handler(message: Message, state: FSMContext):
     phone = message.text
     await state.update_data(phone=phone)
     
-    # Получаем данные
+    # Получаем все данные
     user_data = await state.get_data()
     category = user_data.get('category', 'Помощь')
+    details = user_data.get('details', '')
+    
+    # 👇 ОТПРАВЛЯЕМ В GOOGLE SHEETS
+    sheets_client.add_help_request(
+        name=message.from_user.full_name,
+        phone=phone,
+        category=category,
+        details=details,
+        username=message.from_user.username or ""
+    )
+    print("📊 Данные отправлены в Google Sheets")
     
     # Для денежной помощи - сразу показываем реквизиты
     if category == "Денежная помощь":
@@ -872,4 +882,5 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
+
 
