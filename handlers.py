@@ -814,4 +814,5 @@ async def notify_admin(bot, title: str, text: str):
         print(f"Не удалось отправить уведомление админу: {e}")
 
 # --- ПРИМЕР ОТПРАВКИ ФОТО ПОЛЬЗОВАТЕЛЮ ---
-async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str
+async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: str):
+
