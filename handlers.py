@@ -16,8 +16,8 @@ router = Router()
 class HelpOffer(StatesGroup):
     waiting_for_category = State()
     waiting_for_details = State()
-    waiting_for_phone = State()  # Новое состояние для телефона
     waiting_for_photo = State()
+    waiting_for_phone = State()
 
 class HelpRequest(StatesGroup):
     waiting_for_category = State()
@@ -871,6 +871,7 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
+
 
 
 
