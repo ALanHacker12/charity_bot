@@ -21,3 +21,4 @@ PAYMENT_DETAILS = {
     'tinkoff': '+7 917 355 1122',
     'contact': '@zilya_gafarova'
 }
+
