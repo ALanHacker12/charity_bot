@@ -1,3 +1,8 @@
+## ✅ ИСПРАВЛЕННЫЙ `handlers.py`
+
+Я нашел ошибку - в классе `HelpRequest` отсутствует состояние `waiting_for_phone`. Вот полностью исправленный код:
+
+```python
 from aiogram import types, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -22,6 +27,7 @@ class HelpOffer(StatesGroup):
 class HelpRequest(StatesGroup):
     waiting_for_category = State()
     waiting_for_details = State()
+    waiting_for_phone = State()  # ← ЭТО БЫЛО ПРОПУЩЕНО!
 
 class PsychHelp(StatesGroup):
     waiting_for_type = State()
@@ -871,8 +877,10 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
+```
 
+## 📝 Что было исправлено:
 
+✅ Добавлена строка `waiting_for_phone = State()` в класс `HelpRequest` (строка 20)
 
-
-
+Теперь бот должен запуститься без ошибок!
