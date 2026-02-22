@@ -881,7 +881,7 @@ async def request_phone_handler(message: Message, state: FSMContext):
 @router.message(F.text == "← Назад в главное меню")
 async def back_to_main(message: Message, state: FSMContext):
     await state.clear()
-    await cmd_start(message)
+    await cmd_start(message,state)
 
 async def notify_admin(bot, title: str, text: str):
     admin_chat_id = os.getenv('ADMIN_CHAT_ID', '366700120')
@@ -903,3 +903,4 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
+
