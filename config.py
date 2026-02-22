@@ -8,7 +8,7 @@ load_dotenv()
 TOKEN = os.getenv('TOKEN') or '8365109516:AAFrZj0fTHCriYKRJP9FJKgj7FGknXR3XK8'
 
 # ID администратора для уведомлений
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID') or '366700120'
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID') or '6663434089'
 
 # Проверяем наличие токена
 if not TOKEN:
@@ -21,4 +21,5 @@ PAYMENT_DETAILS = {
     'tinkoff': '+7 917 355 1122',
     'contact': '@zilya_gafarova'
 }
+
 
