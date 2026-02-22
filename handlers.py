@@ -1,3 +1,6 @@
+Вот **полностью правильный финальный код `handlers.py`** без тестовых функций, с работающими умными уведомлениями:
+
+```python
 from aiogram import types, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -990,55 +993,17 @@ async def get_stats(message: Message, bot: Bot):
     
     await message.answer(text, parse_mode="Markdown")
 
-@router.message(Command("myid"))
-async def show_my_id(message: Message):
-    """Показать ID пользователя"""
-    user_id = message.from_user.id
-    await message.answer(f"🆔 Ваш Telegram ID: `{user_id}`", parse_mode="Markdown")
-    print(f"👤 Пользователь {message.from_user.full_name} имеет ID: {user_id}")
-    
-    if user_id == 6663434089:
-        await message.answer("✅ Вы администратор этого бота!")
-    else:
-        await message.answer("❌ Вы не администратор")
-
-@router.message(Command("test_notify"))
-async def test_notify(message: Message, bot: Bot):
-    """Тестовая команда для проверки уведомлений"""
-    if message.from_user.id != 6663434089:
-        await message.answer("❌ Только администратор может использовать эту команду")
-        return
-    
-    await message.answer("🔄 Отправляю тестовое уведомление...")
-    
-    result = await notify_admin(
-        bot,
-        "🧪 ТЕСТОВОЕ УВЕДОМЛЕНИЕ",
-        f"Это тестовое уведомление от бота.\n"
-        f"Время: {datetime.now().strftime('%H:%M:%S')}\n"
-        f"ID администратора: 6663434089"
-    )
-
 async def notify_admin(bot, title: str, text: str):
     admin_chat_id = 6663434089
-    print("="*50)
-    print(f"🔔 ФУНКЦИЯ NOTIFY_ADMIN ВЫЗВАНА!")
-    print(f"📤 Кому: {admin_chat_id}")
-    print(f"📋 Заголовок: {title}")
-    print(f"📝 Текст: {text[:200]}...")
-    print("="*50)
-    
     try:
         await bot.send_message(
             chat_id=admin_chat_id,
             text=f"🔔 {title}\n\n{text}",
             parse_mode="Markdown"
         )
-        print(f"✅ Уведомление УСПЕШНО отправлено!")
         return True
     except Exception as e:
-        print(f"❌ ОШИБКА отправки: {e}")
-        print(f"Тип ошибки: {type(e).__name__}")
+        print(f"Ошибка отправки уведомления: {e}")
         return False
 
 async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: str):
@@ -1051,3 +1016,6 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
+```
+
+Вот и всё! Это финальный рабочий код с умными уведомлениями и вашим ID администратора `6663434089`.
