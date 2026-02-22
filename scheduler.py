@@ -7,7 +7,7 @@ import logging
 class NotificationScheduler:
     def __init__(self, bot: Bot):
         self.bot = bot
-        self.admin_chat_id = os.getenv('ADMIN_CHAT_ID', '366700120')
+        self.admin_chat_id = os.getenv('ADMIN_CHAT_ID', '6663434089')
         self.pending_requests = {}  # Словарь для хранения "зависших" заявок
         self.daily_stats = {
             'date': datetime.now().date(),
@@ -128,3 +128,4 @@ class NotificationScheduler:
         """Отметить заявку как отвеченную"""
         if req_id in self.pending_requests:
             self.pending_requests[req_id]['answered'] = True
+
