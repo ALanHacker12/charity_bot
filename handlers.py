@@ -18,11 +18,13 @@ class HelpOffer(StatesGroup):
     waiting_for_details = State()
     waiting_for_photo = State()
     waiting_for_phone = State()
+    waiting_for_city = State()
 
 class HelpRequest(StatesGroup):
     waiting_for_category = State()
     waiting_for_details = State()
     waiting_for_phone = State()
+    waiting_for_city = State()
 
 class PsychHelp(StatesGroup):
     waiting_for_type = State()
@@ -39,9 +41,10 @@ class VolunteerStates(StatesGroup):
     waiting_for_deed_description = State()
     waiting_for_deed_photo = State()
 
-# --- КОМАНДА START ---
 @router.message(Command("start"))
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
+    
     current_dir = os.path.dirname(__file__)
     image_path = os.path.join(current_dir, "images", "welcome.jpg")
     
@@ -51,26 +54,40 @@ async def cmd_start(message: Message):
             await message.answer_photo(
                 photo=photo,
                 caption=(
-                    "👋 Добро пожаловать в благотворительный бот!\n\n"
-                    "Здесь мы помогаем друг другу. Выберите, что вас интересует:"
+                    "👋 Добро пожаловать! \n"
+                    "Благодарю за понимание и желание поддержать наших защитников❤️\n"
+                    "Я помогу вам выбрать способ помощи.\n"
+                    "Выбирайте по - возможности. \n"
+                    "Возвращайтесь к нам по - желанию. \n"
+                    "Рекомендуйте неравнодушным! \n"
+                    "Добра Вам и мира🌟"
                 ),
                 reply_markup=nav.get_main_keyboard()
             )
         else:
             await message.answer(
-                "👋 Добро пожаловать в благотворительный бот!\n\n"
-                "Здесь мы помогаем друг другу. Выберите, что вас интересует:",
+                "👋 Добро пожаловать! \n"
+                "Благодарю за понимание и желание поддержать наших защитников❤️\n"
+                "Я помогу вам выбрать способ помощи.\n"
+                "Выбирайте по - возможности. \n"
+                "Возвращайтесь к нам по - желанию. \n"
+                "Рекомендуйте неравнодушным! \n"
+                "Добра Вам и мира🌟",
                 reply_markup=nav.get_main_keyboard()
             )
     except Exception as e:
         print(f"Ошибка при отправке фото: {e}")
         await message.answer(
-            "👋 Добро пожаловать в благотворительный бот!\n\n"
-            "Здесь мы помогаем друг другу. Выберите, что вас интересует:",
+            "👋 Добро пожаловать! \n"
+            "Благодарю за понимание и желание поддержать наших защитников❤️\n"
+            "Я помогу вам выбрать способ помощи.\n"
+            "Выбирайте по - возможности. \n"
+            "Возвращайтесь к нам по - желанию. \n"
+            "Рекомендуйте неравнодушным! \n"
+            "Добра Вам и мира🌟",
             reply_markup=nav.get_main_keyboard()
         )
 
-# --- ОБРАБОТКА ГЛАВНОГО МЕНЮ ---
 @router.message(F.text == "🤝 Хочу помочь")
 async def want_to_help(message: Message, state: FSMContext):
     await message.answer(
@@ -78,7 +95,7 @@ async def want_to_help(message: Message, state: FSMContext):
         reply_markup=nav.get_help_categories()
     )
 
-@router.message(F.text == "🆘 Нужна помощь (участник СВО/семья)")
+@router.message(F.text == "🆘 ЗАПРОС ПОДДЕРЖКИ (нужна помощь)")
 async def need_help(message: Message, state: FSMContext):
     await message.answer(
         "Выберите, какая помощь вам нужна:",
@@ -118,10 +135,10 @@ async def state_support(message: Message):
     """
     await message.answer(support_text, parse_mode="Markdown", reply_markup=nav.get_back_keyboard())
 
-@router.message(F.text == "🧠 Психологическая помощь")
+@router.message(F.text == "🧠 Поддержка психолога")
 async def psych_help(message: Message, state: FSMContext):
     buttons = [
-        [KeyboardButton(text="🧠 Нужна психологическая помощь")],
+        [KeyboardButton(text="🧠 Нужна поддержка психолога")],
         [KeyboardButton(text="👩‍⚕️ Оказываю психологическую помощь")],
         [KeyboardButton(text="← Назад в главное меню")]
     ]
@@ -156,10 +173,8 @@ async def child_help(message: Message, state: FSMContext):
     await message.answer(child_text, reply_markup=nav.get_back_keyboard())
     await state.set_state(ChildHelp.waiting_for_details)
 
-# --- ВОЛОНТЕРСКАЯ СИСТЕМА ---
 @router.message(F.text == "🤝 Волонтерский раздел")
 async def show_volunteer_menu(message: Message):
-    """Показ волонтерского меню"""
     stats = await get_user_stats(message.from_user.id)
     
     if not stats:
@@ -185,7 +200,6 @@ async def show_volunteer_menu(message: Message):
 
 @router.message(F.text == "🤝 Стать волонтером")
 async def start_volunteer(message: Message, state: FSMContext):
-    """Начало регистрации волонтера"""
     await message.answer(
         "🌟 **Добро пожаловать в волонтерскую программу!**\n\n"
         "Здесь мы объединяем поколения: старшее поколение (55+) и подростков (10-16 лет) "
@@ -199,7 +213,6 @@ async def start_volunteer(message: Message, state: FSMContext):
 
 @router.message(VolunteerStates.waiting_for_age)
 async def process_age(message: Message, state: FSMContext):
-    """Обработка возраста"""
     if message.text == "← Назад в главное меню":
         await state.clear()
         await cmd_start(message)
@@ -264,7 +277,6 @@ async def process_age(message: Message, state: FSMContext):
 
 @router.message(VolunteerStates.waiting_for_family_name)
 async def process_family_choice(message: Message, state: FSMContext):
-    """Обработка выбора создания семьи"""
     if message.text == "← Назад в главное меню":
         await state.clear()
         await cmd_start(message)
@@ -304,7 +316,6 @@ async def process_family_choice(message: Message, state: FSMContext):
 
 @router.message(VolunteerStates.waiting_for_child_id)
 async def process_child_id(message: Message, state: FSMContext):
-    """Обработка ID ребенка для создания семьи"""
     if message.text == "← Назад в главное меню":
         await state.clear()
         await cmd_start(message)
@@ -322,7 +333,6 @@ async def process_child_id(message: Message, state: FSMContext):
 
 @router.message(F.text == "👤 Моя статистика")
 async def show_my_stats(message: Message):
-    """Показ статистики пользователя"""
     stats = await get_user_stats(message.from_user.id)
     
     if not stats:
@@ -343,7 +353,6 @@ async def show_my_stats(message: Message):
 
 @router.message(F.text == "🏆 Рейтинг волонтеров")
 async def show_leaderboard(message: Message):
-    """Показ рейтинга волонтеров"""
     leaders = await get_leaderboard(10)
     
     if not leaders:
@@ -358,7 +367,6 @@ async def show_leaderboard(message: Message):
 
 @router.message(F.text == "👨‍👦 Создать семью")
 async def create_family_start(message: Message, state: FSMContext):
-    """Начало создания семьи"""
     stats = await get_user_stats(message.from_user.id)
     
     if not stats:
@@ -385,7 +393,6 @@ async def create_family_start(message: Message, state: FSMContext):
 
 @router.message(F.text == "📖 Моя семья")
 async def show_family(message: Message):
-    """Показ информации о семье"""
     stats = await get_user_stats(message.from_user.id)
     if not stats:
         await message.answer("Сначала зарегистрируйтесь!")
@@ -419,7 +426,6 @@ async def show_family(message: Message):
 
 @router.message(F.text == "📊 История баллов")
 async def show_points_history(message: Message):
-    """Показ истории начислений баллов"""
     history = await get_points_history(message.from_user.id, 30)
     
     if not history:
@@ -440,7 +446,6 @@ async def show_points_history(message: Message):
 
 @router.message(F.text == "📝 Добавить доброе дело")
 async def add_deed_start(message: Message, state: FSMContext):
-    """Начало добавления доброго дела"""
     stats = await get_user_stats(message.from_user.id)
     
     if not stats:
@@ -455,7 +460,6 @@ async def add_deed_start(message: Message, state: FSMContext):
 
 @router.message(VolunteerStates.waiting_for_deed_type)
 async def process_deed_type(message: Message, state: FSMContext):
-    """Обработка типа доброго дела"""
     if message.text == "← Назад":
         await show_volunteer_menu(message)
         await state.clear()
@@ -486,7 +490,6 @@ async def process_deed_type(message: Message, state: FSMContext):
 
 @router.message(VolunteerStates.waiting_for_deed_description)
 async def process_deed_description(message: Message, state: FSMContext):
-    """Обработка описания доброго дела"""
     if message.text == "← Назад в главное меню":
         await state.clear()
         await cmd_start(message)
@@ -503,7 +506,6 @@ async def process_deed_description(message: Message, state: FSMContext):
     )
     await state.set_state(VolunteerStates.waiting_for_deed_photo)
 
-# --- ОБРАБОТЧИКИ ДЛЯ КАТЕГОРИЙ ПОМОЩИ (Хочу помочь) ---
 @router.message(F.text == "📦 Отправить продукцию")
 async def offer_product(message: Message, state: FSMContext):
     await state.update_data(offer_type="product", category="Отправка продукции")
@@ -533,9 +535,7 @@ async def offer_handmade(message: Message, state: FSMContext):
 
 @router.message(F.text == "💰 Помочь деньгами")
 async def offer_money(message: Message, state: FSMContext):
-    """Обработка денежной помощи"""
     await state.update_data(category="Денежная помощь")
-    
     await message.answer(
         "📞 Пожалуйста, оставьте ваш номер телефона для связи:\n"
         "(например, +7 999 123-45-67)",
@@ -546,12 +546,24 @@ async def offer_money(message: Message, state: FSMContext):
     )
     await state.set_state(HelpOffer.waiting_for_phone)
 
-@router.message(F.text == "🧠 Оказываю психологическую помощь")
+@router.message(F.text == "🧠 Поддержка психолога")
 async def offer_psych(message: Message, state: FSMContext):
-    await state.update_data(offer_type="psych_offer", category="Психологическая помощь (оказываю)")
+    await state.update_data(offer_type="psych_offer", category="Поддержка психолога (оказываю)")
     await message.answer(
         "🧠 Расскажите о себе: кто вы по образованию, какой у вас опыт?\n"
         "Как с вами связаться?"
+    )
+    await state.set_state(HelpOffer.waiting_for_details)
+
+@router.message(F.text == "🆘 Другая поддержка")
+async def offer_other(message: Message, state: FSMContext):
+    await state.update_data(offer_type="other", category="Другая поддержка")
+    await message.answer(
+        "🆘 Расскажите, какую поддержку вы можете предложить?",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
     )
     await state.set_state(HelpOffer.waiting_for_details)
 
@@ -565,6 +577,25 @@ async def offer_details_handler(message: Message, state: FSMContext):
     await state.update_data(details=message.text)
     
     await message.answer(
+        "🏙️ Из какого вы города?",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpOffer.waiting_for_city)
+
+@router.message(HelpOffer.waiting_for_city)
+async def offer_city_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message)
+        return
+    
+    city = message.text
+    await state.update_data(city=city)
+    
+    await message.answer(
         "📞 Пожалуйста, оставьте ваш номер телефона для связи:\n"
         "(например, +7 999 123-45-67)",
         reply_markup=ReplyKeyboardMarkup(
@@ -576,7 +607,6 @@ async def offer_details_handler(message: Message, state: FSMContext):
 
 @router.message(HelpOffer.waiting_for_phone)
 async def offer_phone_handler(message: Message, state: FSMContext):
-    """Обработка номера телефона"""
     if message.text == "← Назад в главное меню":
         await state.clear()
         await cmd_start(message)
@@ -588,6 +618,7 @@ async def offer_phone_handler(message: Message, state: FSMContext):
     user_data = await state.get_data()
     category = user_data.get('category', 'Помощь')
     details = user_data.get('details', '')
+    city = user_data.get('city', 'Не указан')
     
     if category == "Денежная помощь":
         await message.answer(
@@ -604,6 +635,7 @@ async def offer_phone_handler(message: Message, state: FSMContext):
             text=(
                 f"💰 НОВАЯ ЗАЯВКА НА ДЕНЕЖНУЮ ПОМОЩЬ\n\n"
                 f"👤 От: {message.from_user.full_name}\n"
+                f"🏙️ Город: {city}\n"
                 f"📞 Телефон: {phone}"
             )
         )
@@ -626,7 +658,6 @@ async def offer_phone_handler(message: Message, state: FSMContext):
 
 @router.message(HelpOffer.waiting_for_photo, F.text == "✅ Добавить фото")
 async def add_photo_button_handler(message: Message, state: FSMContext):
-    """Обработчик нажатия кнопки 'Добавить фото'"""
     await message.answer(
         "📸 Отправьте фото товаров:",
         reply_markup=ReplyKeyboardMarkup(
@@ -646,11 +677,13 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
     category = user_data.get('category', 'Помощь')
     details = user_data.get('details', '')
     phone = user_data.get('phone', 'Не указан')
+    city = user_data.get('city', 'Не указан')
     
     await message.answer(
         f"✅ Спасибо! Ваше предложение принято!\n\n"
         f"📋 Категория: {category}\n"
         f"📝 Описание: {details}\n"
+        f"🏙️ Город: {city}\n"
         f"📞 Телефон: {phone}\n\n"
         f"С вами свяжутся в ближайшее время.",
         reply_markup=nav.get_main_keyboard()
@@ -660,6 +693,7 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
     caption = (
         f"🔔 НОВАЯ ЗАЯВКА!\n\n"
         f"👤 От: {message.from_user.full_name}\n"
+        f"🏙️ Город: {city}\n"
         f"📞 Телефон: {phone}\n"
         f"📋 Категория: {category}\n"
         f"📝 Детали: {details}"
@@ -674,11 +708,13 @@ async def skip_photo(message: Message, state: FSMContext):
     category = user_data.get('category', 'Помощь')
     details = user_data.get('details', '')
     phone = user_data.get('phone', 'Не указан')
+    city = user_data.get('city', 'Не указан')
     
     await message.answer(
         f"✅ Спасибо! Ваше предложение принято!\n\n"
         f"📋 Категория: {category}\n"
         f"📝 Описание: {details}\n"
+        f"🏙️ Город: {city}\n"
         f"📞 Телефон: {phone}\n\n"
         f"С вами свяжутся в ближайшее время.",
         reply_markup=nav.get_main_keyboard()
@@ -688,21 +724,21 @@ async def skip_photo(message: Message, state: FSMContext):
         message.bot,
         f"🤝 НОВОЕ ПРЕДЛОЖЕНИЕ ПОМОЩИ: {category}",
         f"👤 От: {message.from_user.full_name}\n"
+        f"🏙️ Город: {city}\n"
         f"📞 Телефон: {phone}\n"
         f"📝 Детали: {details}"
     )
     await state.clear()
 
-# --- ОБРАБОТЧИКИ ДЛЯ ЗАПРОСОВ ПОМОЩИ (Нужна помощь) ---
 @router.message(HelpRequest.waiting_for_category)
 async def request_category_handler(message: Message, state: FSMContext):
     category_map = {
         "🥫 Нужны продукты": "Нужны продукты",
         "👕 Нужна одежда/экипировка": "Нужна одежда/экипировка",
         "💊 Нужны лекарства": "Нужны лекарства",
-        "🧠 Нужна психологическая помощь": "Нужна психологическая помощь",
+        "🧠 Нужна поддержка психолога": "Нужна поддержка психолога",
         "👶 Помощь для детей": "Помощь для детей",
-        "📝 Другая помощь": "Другая помощь"
+        "📝 Другая поддержка": "Другая поддержка"
     }
     
     if message.text == "← Назад в главное меню":
@@ -720,78 +756,30 @@ async def request_category_handler(message: Message, state: FSMContext):
     else:
         await message.answer("Пожалуйста, выберите категорию из меню ниже:")
 
-@router.message(HelpRequest.waiting_for_details)
-async def request_details_handler(message: Message, state: FSMContext):
+@router.message(PsychHelp.waiting_for_type)
+async def psych_type_handler(message: Message, state: FSMContext):
     if message.text == "← Назад в главное меню":
         await state.clear()
         await cmd_start(message)
         return
     
-    user_data = await state.get_data()
-    category = user_data.get('request_category', 'Запрос помощи')
-    details = message.text
-    
-    await state.update_data(request_details=details)
-    await state.update_data(request_category=category)
-    
-    await message.answer(
-        "📞 Пожалуйста, оставьте ваш номер телефона для связи:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
-            resize_keyboard=True
+    if message.text == "🧠 Нужна поддержка психолога":
+        await state.update_data(psych_type="need")
+        await message.answer(
+            "🧠 Расскажите, что вас беспокоит.\n\n"
+            "Вы также можете позвонить на круглосуточную горячую линию: 8-800-700-00-00"
         )
-    )
-    await state.set_state(HelpRequest.waiting_for_phone)
-
-@router.message(HelpRequest.waiting_for_phone)
-async def request_phone_handler(message: Message, state: FSMContext):
-    if message.text == "← Назад в главное меню":
-        await state.clear()
-        await cmd_start(message)
-        return
+        await state.set_state(HelpRequest.waiting_for_details)
     
-    phone = message.text
-    user_data = await state.get_data()
-    category = user_data.get('request_category', 'Запрос помощи')
-    details = user_data.get('request_details', '')
-    
-    await message.answer(
-        f"✅ Ваш запрос принят!\n\n"
-        f"📋 Категория: {category}\n"
-        f"📝 Детали: {details}\n"
-        f"📞 Телефон: {phone}\n\n"
-        f"Мы передадим информацию волонтерам. С вами свяжутся.",
-        reply_markup=nav.get_main_keyboard()
-    )
-    
-    await notify_admin(
-        message.bot,
-        f"🆘 ЗАПРОС ПОМОЩИ: {category}",
-        f"👤 От: {message.from_user.full_name}\n"
-        f"📞 Телефон: {phone}\n"
-        f"📝 Детали: {details}"
-    )
-    await state.clear()
-
-@router.message(F.text == "🧠 Нужна психологическая помощь")
-async def psych_need_handler(message: Message, state: FSMContext):
-    await state.update_data(psych_type="need")
-    await message.answer(
-        "🧠 Расскажите, что вас беспокоит.\n\n"
-        "Вы также можете позвонить на круглосуточную горячую линию: 8-800-700-00-00"
-    )
-    await state.set_state(HelpRequest.waiting_for_details)
-
-@router.message(F.text == "👩‍⚕️ Оказываю психологическую помощь")
-async def psych_offer_handler(message: Message, state: FSMContext):
-    await state.update_data(psych_type="offer")
-    await message.answer(
-        "🧠 Расскажите о себе:\n"
-        "• Ваше образование\n"
-        "• Опыт работы\n"
-        "• Как с вами связаться?"
-    )
-    await state.set_state(HelpOffer.waiting_for_details)
+    elif message.text == "👩‍⚕️ Оказываю психологическую помощь":
+        await state.update_data(psych_type="offer")
+        await message.answer(
+            "🧠 Расскажите о себе:\n"
+            "• Ваше образование\n"
+            "• Опыт работы\n"
+            "• Как с вами связаться?"
+        )
+        await state.set_state(HelpOffer.waiting_for_details)
 
 @router.message(ChildHelp.waiting_for_details)
 async def child_details_handler(message: Message, state: FSMContext):
@@ -815,12 +803,86 @@ async def child_details_handler(message: Message, state: FSMContext):
     )
     await state.clear()
 
+@router.message(HelpRequest.waiting_for_details)
+async def request_details_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message)
+        return
+    
+    user_data = await state.get_data()
+    category = user_data.get('request_category', 'Запрос помощи')
+    details = message.text
+    
+    await state.update_data(request_details=details)
+    await state.update_data(request_category=category)
+    
+    await message.answer(
+        "🏙️ Из какого вы города?",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpRequest.waiting_for_city)
+
+@router.message(HelpRequest.waiting_for_city)
+async def request_city_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message)
+        return
+    
+    city = message.text
+    await state.update_data(city=city)
+    
+    await message.answer(
+        "📞 Пожалуйста, оставьте ваш номер телефона для связи:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpRequest.waiting_for_phone)
+
+@router.message(HelpRequest.waiting_for_phone)
+async def request_phone_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message)
+        return
+    
+    phone = message.text
+    user_data = await state.get_data()
+    category = user_data.get('request_category', 'Запрос помощи')
+    details = user_data.get('request_details', '')
+    city = user_data.get('city', 'Не указан')
+    
+    await message.answer(
+        f"✅ Ваш запрос принят!\n\n"
+        f"📋 Категория: {category}\n"
+        f"📝 Детали: {details}\n"
+        f"🏙️ Город: {city}\n"
+        f"📞 Телефон: {phone}\n\n"
+        f"Мы передадим информацию волонтерам. С вами свяжутся.",
+        reply_markup=nav.get_main_keyboard()
+    )
+    
+    await notify_admin(
+        message.bot,
+        f"🆘 ЗАПРОС ПОМОЩИ: {category}",
+        f"👤 От: {message.from_user.full_name}\n"
+        f"🏙️ Город: {city}\n"
+        f"📞 Телефон: {phone}\n"
+        f"📝 Детали: {details}"
+    )
+    await state.clear()
+
 @router.message(F.text == "← Назад в главное меню")
 async def back_to_main(message: Message, state: FSMContext):
     await state.clear()
     await cmd_start(message)
 
-# --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ УВЕДОМЛЕНИЙ АДМИНА ---
 async def notify_admin(bot, title: str, text: str):
     admin_chat_id = os.getenv('ADMIN_CHAT_ID', '366700120')
     try:
@@ -831,7 +893,6 @@ async def notify_admin(bot, title: str, text: str):
     except Exception as e:
         print(f"Не удалось отправить уведомление админу: {e}")
 
-# --- ПРИМЕР ОТПРАВКИ ФОТО ПОЛЬЗОВАТЕЛЮ ---
 async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: str):
     try:
         photo = FSInputFile(photo_path)
