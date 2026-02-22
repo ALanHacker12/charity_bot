@@ -639,7 +639,7 @@ async def offer_phone_handler(message: Message, state: FSMContext, bot: Bot):
         )
         
         await message.bot.send_message(
-            chat_id=366700120,
+            chat_id=6663434089,
             text=(
                 f"💰 *НОВАЯ ЗАЯВКА #{request_id}*\n\n"
                 f"👤 От: {message.from_user.full_name}\n"
@@ -713,7 +713,7 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
         reply_markup=nav.get_main_keyboard()
     )
     
-    admin_chat_id = os.getenv('ADMIN_CHAT_ID', '366700120')
+    admin_chat_id = 6663434089
     caption = (
         f"🔔 *НОВАЯ ЗАЯВКА #{request_id}*\n\n"
         f"👤 От: {message.from_user.full_name}\n"
@@ -948,9 +948,9 @@ async def back_to_main(message: Message, state: FSMContext):
     await state.clear()
     await cmd_start(message, state)
 
-@router.message(Command(prefix="done_"))
+@router.message(lambda message: message.text and message.text.startswith('/done_'))
 async def mark_as_done(message: Message, bot: Bot):
-    admin_id = int(os.getenv('ADMIN_CHAT_ID', '366700120'))
+    admin_id = 6663434089
     
     if message.from_user.id != admin_id:
         return
@@ -968,7 +968,7 @@ async def mark_as_done(message: Message, bot: Bot):
 
 @router.message(Command("stats"))
 async def get_stats(message: Message, bot: Bot):
-    admin_id = int(os.getenv('ADMIN_CHAT_ID', '366700120'))
+    admin_id = 6663434089
     
     if message.from_user.id != admin_id:
         return
@@ -993,7 +993,7 @@ async def get_stats(message: Message, bot: Bot):
     await message.answer(text, parse_mode="Markdown")
 
 async def notify_admin(bot, title: str, text: str):
-    admin_chat_id = os.getenv('ADMIN_CHAT_ID', '366700120')
+    admin_chat_id = 6663434089
     try:
         await bot.send_message(
             chat_id=admin_chat_id,
