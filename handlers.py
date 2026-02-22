@@ -1,6 +1,3 @@
-Вот **полностью правильный финальный код `handlers.py`** без тестовых функций, с работающими умными уведомлениями:
-
-```python
 from aiogram import types, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -49,6 +46,10 @@ class VolunteerStates(StatesGroup):
 
 def generate_request_id():
     return random.randint(1000, 9999)
+
+def get_username(user):
+    """Получить username пользователя"""
+    return f"@{user.username}" if user.username else "не указан"
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -117,11 +118,6 @@ async def state_support(message: Message):
     support_text = """
 🏛️ **Меры поддержки участников СВО и членов их семей:**
 
-**Единовременные выплаты:**
-• При заключении контракта: 195 000 ₽
-• При ранении: от 300 000 ₽
-• При гибели: 5 000 000 ₽ семье
-
 **Социальные льготы:**
 • Бесплатный проезд к месту лечения
 • Путевки в санатории
@@ -139,27 +135,8 @@ async def state_support(message: Message):
 • МФЦ (отделение для участников СВО)
 • Филиал фонда «Защитники Отечества»
 • Горячая линия 117 или 122
-
-Подробнее можно узнать на сайте: https://сво.рф/поддержка
     """
     await message.answer(support_text, parse_mode="Markdown", reply_markup=nav.get_back_keyboard())
-
-@router.message(F.text == "🧠 Поддержка психолога")
-async def psych_help(message: Message, state: FSMContext):
-    buttons = [
-        [KeyboardButton(text="🧠 Нужна поддержка психолога")],
-        [KeyboardButton(text="👩‍⚕️ Оказываю психологическую помощь")],
-        [KeyboardButton(text="← Назад в главное меню")]
-    ]
-    keyboard = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
-    
-    await message.answer(
-        "Вы можете получить психологическую помощь или предложить свои услуги как психолог.\n\n"
-        "**Круглосуточная горячая линия:** 8-800-700-00-00",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
-    await state.set_state(PsychHelp.waiting_for_type)
 
 @router.message(F.text == "👶 Помощь детям СВО")
 async def child_help(message: Message, state: FSMContext):
@@ -645,7 +622,8 @@ async def offer_phone_handler(message: Message, state: FSMContext, bot: Bot):
             chat_id=6663434089,
             text=(
                 f"💰 *НОВАЯ ЗАЯВКА #{request_id}*\n\n"
-                f"👤 От: {message.from_user.full_name}\n"
+                f"👤 ФИО: {message.from_user.full_name}\n"
+                f"🆔 Username: {get_username(message.from_user)}\n"
                 f"🏙️ Город: {city}\n"
                 f"📞 Телефон: {phone}\n"
                 f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n\n"
@@ -719,7 +697,8 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
     admin_chat_id = 6663434089
     caption = (
         f"🔔 *НОВАЯ ЗАЯВКА #{request_id}*\n\n"
-        f"👤 От: {message.from_user.full_name}\n"
+        f"👤 ФИО: {message.from_user.full_name}\n"
+        f"🆔 Username: {get_username(message.from_user)}\n"
         f"🏙️ Город: {city}\n"
         f"📞 Телефон: {phone}\n"
         f"📋 Категория: {category}\n"
@@ -763,7 +742,8 @@ async def skip_photo(message: Message, state: FSMContext, bot: Bot):
     await notify_admin(
         bot,
         f"🤝 *НОВАЯ ЗАЯВКА #{request_id}*",
-        f"👤 От: {message.from_user.full_name}\n"
+        f"👤 ФИО: {message.from_user.full_name}\n"
+        f"🆔 Username: {get_username(message.from_user)}\n"
         f"🏙️ Город: {city}\n"
         f"📞 Телефон: {phone}\n"
         f"📋 Категория: {category}\n"
@@ -789,7 +769,6 @@ async def request_category_handler(message: Message, state: FSMContext):
         "👕 Нужна одежда/экипировка": "Нужна одежда/экипировка",
         "💊 Нужны лекарства": "Нужны лекарства",
         "🧠 Нужна поддержка психолога": "Нужна поддержка психолога",
-        "👶 Помощь для детей": "Помощь для детей",
         "📝 Другая поддержка": "Другая поддержка"
     }
     
@@ -851,7 +830,9 @@ async def child_details_handler(message: Message, state: FSMContext):
     await notify_admin(
         message.bot,
         "👶 Помощь детям",
-        f"От: {message.from_user.full_name} (@{message.from_user.username})\nДетали: {details}"
+        f"👤 ФИО: {message.from_user.full_name}\n"
+        f"🆔 Username: {get_username(message.from_user)}\n"
+        f"📝 Детали: {details}"
     )
     await state.clear()
 
@@ -925,7 +906,8 @@ async def request_phone_handler(message: Message, state: FSMContext, bot: Bot):
     await notify_admin(
         bot,
         f"🆘 *ЗАПРОС ПОМОЩИ #{request_id}*",
-        f"👤 От: {message.from_user.full_name}\n"
+        f"👤 ФИО: {message.from_user.full_name}\n"
+        f"🆔 Username: {get_username(message.from_user)}\n"
         f"🏙️ Город: {city}\n"
         f"📞 Телефон: {phone}\n"
         f"📋 Категория: {category}\n"
@@ -993,6 +975,36 @@ async def get_stats(message: Message, bot: Bot):
     
     await message.answer(text, parse_mode="Markdown")
 
+@router.message(Command("all_stats"))
+async def get_all_stats(message: Message, bot: Bot):
+    admin_id = 6663434089
+    
+    if message.from_user.id != admin_id:
+        return
+    
+    if not hasattr(bot, 'scheduler'):
+        await message.answer("❌ Планировщик не инициализирован")
+        return
+    
+    total_requests = len(bot.scheduler.pending_requests)
+    answered = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('answered', False))
+    pending = total_requests - answered
+    
+    money_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'money')
+    help_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'help')
+    request_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'request')
+    
+    text = f"📋 *ПОЛНАЯ СТАТИСТИКА ЗА ВСЕ ВРЕМЯ*\n\n"
+    text += f"📊 Всего заявок: {total_requests}\n"
+    text += f"✅ Выполнено: {answered}\n"
+    text += f"⏳ В ожидании: {pending}\n"
+    text += f"\n📊 *По категориям:*\n"
+    text += f"💰 Денежная помощь: {money_requests}\n"
+    text += f"🤝 Предложения помощи: {help_requests}\n"
+    text += f"🆘 Запросы помощи: {request_requests}\n"
+    
+    await message.answer(text, parse_mode="Markdown")
+
 async def notify_admin(bot, title: str, text: str):
     admin_chat_id = 6663434089
     try:
@@ -1016,6 +1028,3 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
-```
-
-Вот и всё! Это финальный рабочий код с умными уведомлениями и вашим ID администратора `6663434089`.
