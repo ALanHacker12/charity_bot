@@ -5,7 +5,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, FSInputFile
 from aiogram import Router
 from aiogram.enums import ContentType
-from google_sheets import sheets_client
 import os
 import aiosqlite
 import config
@@ -597,15 +596,6 @@ async def offer_phone_handler(message: Message, state: FSMContext):
     category = user_data.get('category', 'Помощь')
     details = user_data.get('details', '')
     
-    # 👇 ОТПРАВЛЯЕМ В GOOGLE SHEETS
-    sheets_client.add_help_request(
-        name=message.from_user.full_name,
-        phone=phone,
-        category=category,
-        details=details,
-        username=message.from_user.username or ""
-    )
-    print("📊 Данные отправлены в Google Sheets")
     
     # Для денежной помощи - сразу показываем реквизиты
     if category == "Денежная помощь":
@@ -832,16 +822,6 @@ async def request_phone_handler(message: Message, state: FSMContext):
     category = user_data.get('request_category', 'Запрос помощи')
     details = user_data.get('request_details', '')
     
-    # 👇 ОТПРАВЛЯЕМ В GOOGLE SHEETS
-    sheets_client.add_request(
-        name=message.from_user.full_name,
-        phone=phone,
-        category=category,
-        details=details,
-        username=message.from_user.username or ""
-    )
-    print("📊 Запрос отправлен в Google Sheets")
-    
     await message.answer(
         f"✅ Ваш запрос принят!\n\n"
         f"📋 Категория: {category}\n"
@@ -891,6 +871,7 @@ async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: 
         )
     except Exception as e:
         print(f"Ошибка при отправке фото пользователю: {e}")
+
 
 
 
