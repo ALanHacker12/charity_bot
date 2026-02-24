@@ -116,27 +116,27 @@ async def need_help(message: Message, state: FSMContext):
 @router.message(F.text == "🏛️ Меры поддержки государства")
 async def state_support(message: Message):
     support_text = """
-🏛️ **Меры поддержки участников СВО и членов их семей:**
+🏛️ Меры поддержки участников СВО и членов их семей:
 
-**Социальные льготы:**
+Социальные льготы:
 • Бесплатный проезд к месту лечения
 • Путевки в санатории
 • Бесплатное лекарственное обеспечение
 • Кредитные каникулы
 
-**Для семей:**
+Для семей:
 • Первоочередное зачисление детей в сады/школы
 • Бесплатное питание в школах
 • Компенсация ЖКХ (50%)
 • Бесплатное посещение музеев/театров
 
-**Куда обратиться:**
+Куда обратиться:
 • Военкомат по месту службы
 • МФЦ (отделение для участников СВО)
 • Филиал фонда «Защитники Отечества»
 • Горячая линия 117 или 122
     """
-    await message.answer(support_text, parse_mode="Markdown", reply_markup=nav.get_back_keyboard())
+    await message.answer(support_text, reply_markup=nav.get_back_keyboard())
 
 @router.message(F.text == "👶 Помощь детям СВО")
 async def child_help(message: Message, state: FSMContext):
@@ -178,21 +178,19 @@ async def show_volunteer_menu(message: Message):
         )
     else:
         await message.answer(
-            "🌟 **Волонтерский раздел**\n\n"
+            "🌟 Волонтерский раздел\n\n"
             "Здесь вы можете управлять своей волонтерской деятельностью:",
-            parse_mode="Markdown",
             reply_markup=nav.get_volunteer_keyboard()
         )
 
 @router.message(F.text == "🤝 Стать волонтером")
 async def start_volunteer(message: Message, state: FSMContext):
     await message.answer(
-        "🌟 **Добро пожаловать в волонтерскую программу!**\n\n"
+        "🌟 Добро пожаловать в волонтерскую программу!\n\n"
         "Здесь мы объединяем поколения: старшее поколение (55+) и подростков (10-16 лет) "
         "для совместных добрых дел.\n\n"
         "Вы можете участвовать индивидуально или создать семейную команду.\n\n"
         "Сколько вам лет? (Напишите число)",
-        parse_mode="Markdown",
         reply_markup=nav.get_back_keyboard()
     )
     await state.set_state(VolunteerStates.waiting_for_age)
@@ -221,7 +219,7 @@ async def process_age(message: Message, state: FSMContext):
         
         if age >= 55:
             welcome_text = (
-                "👴 **Вы зарегистрированы как представитель старшего поколения!**\n\n"
+                "👴 Вы зарегистрированы как представитель старшего поколения!\n\n"
                 "У вас есть бесценный жизненный опыт, которым можно поделиться. "
                 "Вы можете:\n"
                 "• Стать наставником для подростка\n"
@@ -230,7 +228,7 @@ async def process_age(message: Message, state: FSMContext):
             )
         elif 10 <= age <= 16:
             welcome_text = (
-                "🧒 **Вы зарегистрированы как юный волонтер!**\n\n"
+                "🧒 Вы зарегистрированы как юный волонтер!\n\n"
                 "Вместе со старшим поколением вы сможете:\n"
                 "• Учиться добрым делам\n"
                 "• Помогать тем, кто нуждается\n"
@@ -238,7 +236,7 @@ async def process_age(message: Message, state: FSMContext):
             )
         else:
             welcome_text = (
-                "👤 **Вы зарегистрированы как волонтер!**\n\n"
+                "👤 Вы зарегистрированы как волонтер!\n\n"
                 "Вы тоже можете участвовать в добрых делах и получать баллы."
             )
         
@@ -250,7 +248,7 @@ async def process_age(message: Message, state: FSMContext):
             resize_keyboard=True
         )
         
-        await message.answer(welcome_text, parse_mode="Markdown")
+        await message.answer(welcome_text)
         await message.answer(
             "Хотите создать семейную команду? Это позволит участвовать "
             "в специальном семейном рейтинге и получать дополнительные баллы!",
@@ -328,13 +326,12 @@ async def show_my_stats(message: Message):
     total_points, help_count, username, full_name, age, is_adult, reg_date = stats
     
     await message.answer(
-        f"📊 **Ваша статистика**\n\n"
+        f"📊 Ваша статистика\n\n"
         f"👤 Имя: {full_name}\n"
         f"🎂 Возраст: {age} лет\n"
         f"🌟 Всего баллов: {total_points}\n"
         f"🤝 Добрых дел: {help_count}\n"
-        f"📅 Участник с: {reg_date[:10] if reg_date else 'недавно'}",
-        parse_mode="Markdown"
+        f"📅 Участник с: {reg_date[:10] if reg_date else 'недавно'}"
     )
 
 @router.message(F.text == "🏆 Рейтинг волонтеров")
@@ -345,11 +342,11 @@ async def show_leaderboard(message: Message):
         await message.answer("Пока нет участников с баллами. Будьте первым!")
         return
     
-    text = "🏆 **Топ-10 волонтеров**\n\n"
+    text = "🏆 Топ-10 волонтеров\n\n"
     for i, (name, points, helps) in enumerate(leaders, 1):
         text += f"{i}. {name} — {points} 🌟 ({helps} добрых дел)\n"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 @router.message(F.text == "👨‍👦 Создать семью")
 async def create_family_start(message: Message, state: FSMContext):
@@ -402,12 +399,11 @@ async def show_family(message: Message):
     family_id, family_name, points, adult_name, child_name = family
     
     await message.answer(
-        f"👨‍👦 **Информация о семье**\n\n"
+        f"👨‍👦 Информация о семье\n\n"
         f"🏷 Название: {family_name}\n"
         f"🌟 Всего баллов: {points}\n"
         f"👴 Старший: {adult_name}\n"
-        f"🧒 Младший: {child_name}",
-        parse_mode="Markdown"
+        f"🧒 Младший: {child_name}"
     )
 
 @router.message(F.text == "📊 История баллов")
@@ -418,7 +414,7 @@ async def show_points_history(message: Message):
         await message.answer("У вас пока нет истории начислений баллов.")
         return
     
-    text = "📊 **История баллов за последние 30 дней**\n\n"
+    text = "📊 История баллов за последние 30 дней\n\n"
     total = 0
     
     for points, reason, date in history:
@@ -426,9 +422,9 @@ async def show_points_history(message: Message):
         text += f"• +{points} 🌟 — {reason} ({date_str})\n"
         total += points
     
-    text += f"\n**Всего за период: {total} 🌟**"
+    text += f"\nВсего за период: {total} 🌟"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 @router.message(F.text == "📝 Добавить доброе дело")
 async def add_deed_start(message: Message, state: FSMContext):
@@ -610,26 +606,24 @@ async def offer_phone_handler(message: Message, state: FSMContext, bot: Bot):
     
     if category == "Денежная помощь":
         await message.answer(
-            f"💰 **Реквизиты для перевода:**\n\n"
+            f"💰 Реквизиты для перевода:\n\n"
             f"Сбербанк: +7 917 355 1122\n"
             f"Тинькофф: +7 917 355 1122\n\n"
             f"После перевода напишите @zilya_gafarova",
-            reply_markup=nav.get_main_keyboard(),
-            parse_mode="Markdown"
+            reply_markup=nav.get_main_keyboard()
         )
         
         await message.bot.send_message(
             chat_id=6663434089,
             text=(
-                f"💰 *НОВАЯ ЗАЯВКА #{request_id}*\n\n"
+                f"💰 НОВАЯ ЗАЯВКА #{request_id}\n\n"
                 f"👤 ФИО: {message.from_user.full_name}\n"
                 f"🆔 Username: {get_username(message.from_user)}\n"
                 f"🏙️ Город: {city}\n"
                 f"📞 Телефон: {phone}\n"
                 f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n\n"
                 f"Команда для отметки: /done_{request_id}"
-            ),
-            parse_mode="Markdown"
+            )
         )
         
         if hasattr(bot, 'scheduler'):
@@ -671,96 +665,106 @@ async def add_photo_button_handler(message: Message, state: FSMContext):
 
 @router.message(HelpOffer.waiting_for_photo, F.content_type == ContentType.PHOTO)
 async def handle_photo(message: Message, state: FSMContext, bot: Bot):
-    photo = message.photo[-1]
-    file_id = photo.file_id
-    
-    await state.update_data(photo_file_id=file_id)
-    
-    user_data = await state.get_data()
-    category = user_data.get('category', 'Помощь')
-    details = user_data.get('details', '')
-    phone = user_data.get('phone', 'Не указан')
-    city = user_data.get('city', 'Не указан')
-    request_id = user_data.get('request_id', generate_request_id())
-    
-    await message.answer(
-        f"✅ Спасибо! Ваше предложение принято!\n\n"
-        f"📋 Категория: {category}\n"
-        f"📝 Описание: {details}\n"
-        f"🏙️ Город: {city}\n"
-        f"📞 Телефон: {phone}\n"
-        f"🆔 Номер заявки: #{request_id}\n\n"
-        f"С вами свяжутся в ближайшее время.",
-        reply_markup=nav.get_main_keyboard()
-    )
-    
-    admin_chat_id = 6663434089
-    caption = (
-        f"🔔 *НОВАЯ ЗАЯВКА #{request_id}*\n\n"
-        f"👤 ФИО: {message.from_user.full_name}\n"
-        f"🆔 Username: {get_username(message.from_user)}\n"
-        f"🏙️ Город: {city}\n"
-        f"📞 Телефон: {phone}\n"
-        f"📋 Категория: {category}\n"
-        f"📝 Детали: {details}\n"
-        f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n\n"
-        f"Команда для отметки: /done_{request_id}"
-    )
-    await bot.send_photo(chat_id=admin_chat_id, photo=file_id, caption=caption, parse_mode="Markdown")
-    
-    if hasattr(bot, 'scheduler'):
-        bot.scheduler.add_request(
-            request_id, 
-            message.from_user.full_name, 
-            phone, 
-            category, 
-            'help'
+    try:
+        photo = message.photo[-1]
+        file_id = photo.file_id
+        
+        await state.update_data(photo_file_id=file_id)
+        
+        user_data = await state.get_data()
+        category = user_data.get('category', 'Помощь')
+        details = user_data.get('details', '')
+        phone = user_data.get('phone', 'Не указан')
+        city = user_data.get('city', 'Не указан')
+        request_id = user_data.get('request_id', generate_request_id())
+        
+        await message.answer(
+            f"✅ Спасибо! Ваше предложение принято!\n\n"
+            f"📋 Категория: {category}\n"
+            f"📝 Описание: {details}\n"
+            f"🏙️ Город: {city}\n"
+            f"📞 Телефон: {phone}\n"
+            f"🆔 Номер заявки: #{request_id}\n\n"
+            f"С вами свяжутся в ближайшее время.",
+            reply_markup=nav.get_main_keyboard()
         )
-    
-    await state.clear()
+        
+        admin_chat_id = 6663434089
+        caption = (
+            f"🔔 НОВАЯ ЗАЯВКА #{request_id}\n\n"
+            f"👤 ФИО: {message.from_user.full_name}\n"
+            f"🆔 Username: {get_username(message.from_user)}\n"
+            f"🏙️ Город: {city}\n"
+            f"📞 Телефон: {phone}\n"
+            f"📋 Категория: {category}\n"
+            f"📝 Детали: {details}\n"
+            f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n\n"
+            f"Команда для отметки: /done_{request_id}"
+        )
+        await bot.send_photo(chat_id=admin_chat_id, photo=file_id, caption=caption)
+        
+        if hasattr(bot, 'scheduler'):
+            bot.scheduler.add_request(
+                request_id, 
+                message.from_user.full_name, 
+                phone, 
+                category, 
+                'help'
+            )
+        
+        await state.clear()
+    except Exception as e:
+        print(f"❌ Ошибка в handle_photo: {e}")
+        await message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")
+        await state.clear()
 
 @router.message(HelpOffer.waiting_for_photo, F.text == "⏭ Пропустить")
 async def skip_photo(message: Message, state: FSMContext, bot: Bot):
-    user_data = await state.get_data()
-    category = user_data.get('category', 'Помощь')
-    details = user_data.get('details', '')
-    phone = user_data.get('phone', 'Не указан')
-    city = user_data.get('city', 'Не указан')
-    request_id = user_data.get('request_id', generate_request_id())
-    
-    await message.answer(
-        f"✅ Спасибо! Ваше предложение принято!\n\n"
-        f"📋 Категория: {category}\n"
-        f"📝 Описание: {details}\n"
-        f"🏙️ Город: {city}\n"
-        f"📞 Телефон: {phone}\n"
-        f"🆔 Номер заявки: #{request_id}\n\n"
-        f"С вами свяжутся в ближайшее время.",
-        reply_markup=nav.get_main_keyboard()
-    )
-    
-    await notify_admin(
-        bot,
-        f"🤝 *НОВАЯ ЗАЯВКА #{request_id}*",
-        f"👤 ФИО: {message.from_user.full_name}\n"
-        f"🆔 Username: {get_username(message.from_user)}\n"
-        f"🏙️ Город: {city}\n"
-        f"📞 Телефон: {phone}\n"
-        f"📋 Категория: {category}\n"
-        f"📝 Детали: {details}\n"
-        f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}"
-    )
-    
-    if hasattr(bot, 'scheduler'):
-        bot.scheduler.add_request(
-            request_id, 
-            message.from_user.full_name, 
-            phone, 
-            category, 
-            'help'
+    try:
+        user_data = await state.get_data()
+        category = user_data.get('category', 'Помощь')
+        details = user_data.get('details', '')
+        phone = user_data.get('phone', 'Не указан')
+        city = user_data.get('city', 'Не указан')
+        request_id = user_data.get('request_id', generate_request_id())
+        
+        await message.answer(
+            f"✅ Спасибо! Ваше предложение принято!\n\n"
+            f"📋 Категория: {category}\n"
+            f"📝 Описание: {details}\n"
+            f"🏙️ Город: {city}\n"
+            f"📞 Телефон: {phone}\n"
+            f"🆔 Номер заявки: #{request_id}\n\n"
+            f"С вами свяжутся в ближайшее время.",
+            reply_markup=nav.get_main_keyboard()
         )
-    
-    await state.clear()
+        
+        await notify_admin(
+            bot,
+            f"🤝 НОВАЯ ЗАЯВКА #{request_id}",
+            f"👤 ФИО: {message.from_user.full_name}\n"
+            f"🆔 Username: {get_username(message.from_user)}\n"
+            f"🏙️ Город: {city}\n"
+            f"📞 Телефон: {phone}\n"
+            f"📋 Категория: {category}\n"
+            f"📝 Детали: {details}\n"
+            f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}"
+        )
+        
+        if hasattr(bot, 'scheduler'):
+            bot.scheduler.add_request(
+                request_id, 
+                message.from_user.full_name, 
+                phone, 
+                category, 
+                'help'
+            )
+        
+        await state.clear()
+    except Exception as e:
+        print(f"❌ Ошибка в skip_photo: {e}")
+        await message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")
+        await state.clear()
 
 @router.message(HelpRequest.waiting_for_category)
 async def request_category_handler(message: Message, state: FSMContext):
@@ -905,7 +909,7 @@ async def request_phone_handler(message: Message, state: FSMContext, bot: Bot):
     
     await notify_admin(
         bot,
-        f"🆘 *ЗАПРОС ПОМОЩИ #{request_id}*",
+        f"🆘 ЗАПРОС ПОМОЩИ #{request_id}",
         f"👤 ФИО: {message.from_user.full_name}\n"
         f"🆔 Username: {get_username(message.from_user)}\n"
         f"🏙️ Город: {city}\n"
@@ -964,7 +968,7 @@ async def get_stats(message: Message, bot: Bot):
     
     active = sum(1 for req in bot.scheduler.pending_requests.values() if not req.get('answered', False))
     
-    text = f"📊 *ТЕКУЩАЯ СТАТИСТИКА*\n\n"
+    text = f"📊 ТЕКУЩАЯ СТАТИСТИКА\n\n"
     text += f"📅 Дата: {stats['date'].strftime('%d.%m.%Y')}\n"
     text += f"🤝 Предложений помощи: {stats['help_offers']}\n"
     text += f"🆘 Запросов помощи: {stats['help_requests']}\n"
@@ -973,7 +977,7 @@ async def get_stats(message: Message, bot: Bot):
     text += f"⏳ Активных заявок: {active}\n"
     text += f"📋 Всего заявок: {stats['help_offers'] + stats['help_requests'] + stats['money_offers']}"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 @router.message(Command("all_stats"))
 async def get_all_stats(message: Message, bot: Bot):
@@ -994,24 +998,23 @@ async def get_all_stats(message: Message, bot: Bot):
     help_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'help')
     request_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'request')
     
-    text = f"📋 *ПОЛНАЯ СТАТИСТИКА ЗА ВСЕ ВРЕМЯ*\n\n"
+    text = f"📋 ПОЛНАЯ СТАТИСТИКА ЗА ВСЕ ВРЕМЯ\n\n"
     text += f"📊 Всего заявок: {total_requests}\n"
     text += f"✅ Выполнено: {answered}\n"
     text += f"⏳ В ожидании: {pending}\n"
-    text += f"\n📊 *По категориям:*\n"
+    text += f"\n📊 По категориям:\n"
     text += f"💰 Денежная помощь: {money_requests}\n"
     text += f"🤝 Предложения помощи: {help_requests}\n"
     text += f"🆘 Запросы помощи: {request_requests}\n"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 async def notify_admin(bot, title: str, text: str):
     admin_chat_id = 6663434089
     try:
         await bot.send_message(
             chat_id=admin_chat_id,
-            text=f"🔔 {title}\n\n{text}",
-            parse_mode="Markdown"
+            text=f"🔔 {title}\n\n{text}"
         )
         return True
     except Exception as e:
