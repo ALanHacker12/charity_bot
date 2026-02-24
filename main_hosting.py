@@ -63,11 +63,11 @@ async def main():
     # Подключаем router с обработчиками
     dp.include_router(router)
     
-    # Регистрируем функции запуска и остановки
-    dp.startup.register(lambda: on_startup(bot))
-    dp.shutdown.register(lambda: on_shutdown(bot))
+    # ВАЖНО: Правильно регистрируем функции запуска и остановки
+    dp.startup.register(on_startup)  # Без lambda!
+    dp.shutdown.register(on_shutdown)
     
-    # Удаляем вебхук (важно для работы в режиме polling)
+    # Удаляем вебхук
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("✅ Вебхук удален")
     
