@@ -276,7 +276,7 @@ async def process_family_choice(message: Message, state: FSMContext):
                 "зарегистрировался в боте и отправил вам свой ID.\n\n"
                 "Попросите ребенка написать команду /start и перейти в раздел "
                 "'🤝 Стать волонтером'. После регистрации он получит свой ID.\n\n"
-                "Введите ID ребенка:"
+                "Введите ID ребенка или нажмите '⏭ Пропустить', чтобы выйти:"
             )
             await state.set_state(VolunteerStates.waiting_for_child_id)
         elif 10 <= age <= 16:
@@ -294,15 +294,22 @@ async def process_family_choice(message: Message, state: FSMContext):
             )
             await show_volunteer_menu(message)
             await state.clear()
-    else:
+    elif message.text == "⏭ Пропустить":
         await show_volunteer_menu(message)
         await state.clear()
+    else:
+        await message.answer("Пожалуйста, выберите '✅ Создать семью' или '⏭ Пропустить'")
 
 @router.message(VolunteerStates.waiting_for_child_id)
-async def process_child_id(message: Message, state: FSMContext):
+async def process_child_id_handler(message: Message, state: FSMContext):
     if message.text == "← Назад в главное меню":
         await state.clear()
         await cmd_start(message, state)
+        return
+    
+    if message.text == "⏭ Пропустить":
+        await show_volunteer_menu(message)
+        await state.clear()
         return
     
     try:
@@ -313,7 +320,7 @@ async def process_child_id(message: Message, state: FSMContext):
             await show_volunteer_menu(message)
         await state.clear()
     except ValueError:
-        await message.answer("Пожалуйста, введите числовой ID")
+        await message.answer("Пожалуйста, введите числовой ID или нажмите '⏭ Пропустить'")
 
 @router.message(F.text == "👤 Моя статистика")
 async def show_my_stats(message: Message):
@@ -370,7 +377,7 @@ async def create_family_start(message: Message, state: FSMContext):
         "Для создания семьи вам нужно:\n\n"
         "1. Попросить ребенка (10-16 лет) зарегистрироваться в боте\n"
         "2. Ребенок получит свой ID (можно узнать в статистике)\n"
-        "3. Введите ID ребенка:"
+        "3. Введите ID ребенка или нажмите '⏭ Пропустить', чтобы выйти:"
     )
     await state.set_state(VolunteerStates.waiting_for_child_id)
 
