@@ -1,84 +1,123 @@
 import asyncio
-import logging
 import os
-from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.memory import MemoryStorage
-from database import init_db
-from handlers import router
-import config
-from scheduler import NotificationScheduler
+from datetime import datetime, timedelta
+from aiogram import Bot
+import logging
 
-# Настраиваем логирование
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
-async def on_startup(bot: Bot):
-    """Действия при запуске бота"""
-    logging.info("Инициализация базы данных...")
-    await init_db()
-    logging.info("База данных готова")
+class NotificationScheduler:
+    def __init__(self, bot: Bot):
+        self.bot = bot
+        self.admin_chat_id = os.getenv('ADMIN_CHAT_ID', '6663434089')
+        self.pending_requests = {}
+        self.daily_stats = {
+            'date': datetime.now().date(),
+            'help_offers': 0,
+            'help_requests': 0,
+            'money_offers': 0,
+            'volunteers': 0
+        }
     
-    # Создаем и запускаем планировщик
-    try:
-        # Создаем планировщик
-        scheduler = NotificationScheduler(bot)
-        # Сохраняем его в объекте бота (ВАЖНО!)
-        bot.scheduler = scheduler
-        # Запускаем планировщик в фоне
-        asyncio.create_task(scheduler.start_scheduler())
-        logging.info("✅ ПЛАНИРОВЩИК УСПЕШНО ЗАПУЩЕН!")
+    async def start_scheduler(self):
+        """Запуск планировщика"""
+        while True:
+            try:
+                await asyncio.sleep(3600)
+                await self.check_pending_requests()
+                
+                if datetime.now().date() > self.daily_stats['date']:
+                    await self.send_daily_report()
+                    self.reset_daily_stats()
+                    
+            except Exception as e:
+                logging.error(f"Ошибка в планировщике: {e}")
+    
+    async def check_pending_requests(self):
+        """Проверка заявок, на которые не ответили"""
+        now = datetime.now()
+        overdue_requests = []
         
-        # Отправляем тестовое уведомление о запуске
-        await bot.send_message(
-            chat_id=6663434089,
-            text="🟢 Бот запущен. Система уведомлений активна."
+        for req_id, req_data in self.pending_requests.items():
+            if not req_data.get('answered', False):
+                time_passed = now - req_data['timestamp']
+                hours = time_passed.total_seconds() / 3600
+                
+                if hours >= 24 and not req_data.get('notified_24h', False):
+                    overdue_requests.append({
+                        'id': req_id,
+                        'user': req_data['user'],
+                        'category': req_data['category'],
+                        'phone': req_data['phone'],
+                        'hours': int(hours)
+                    })
+                    req_data['notified_24h'] = True
+                elif hours >= 12 and not req_data.get('notified_12h', False):
+                    req_data['notified_12h'] = True
+                    await self.bot.send_message(
+                        chat_id=self.admin_chat_id,
+                        text=f"⏰ *НАПОМИНАНИЕ*\n"
+                             f"Заявка #{req_id} ожидает ответа уже 12 часов\n"
+                             f"👤 {req_data['user']}\n"
+                             f"📞 {req_data['phone']}\n"
+                             f"📋 {req_data['category']}",
+                        parse_mode="Markdown"
+                    )
+        
+        if overdue_requests:
+            text = "⚠️ *ПРОСРОЧЕННЫЕ ЗАЯВКИ (более 24ч)*\n\n"
+            for req in overdue_requests:
+                text += f"• #{req['id']}: {req['user']} - {req['hours']}ч\n"
+            await self.bot.send_message(
+                chat_id=self.admin_chat_id,
+                text=text,
+                parse_mode="Markdown"
+            )
+    
+    async def send_daily_report(self):
+        """Отправка ежедневного отчета"""
+        report = f"📊 *ОТЧЕТ ЗА {self.daily_stats['date'].strftime('%d.%m.%Y')}*\n\n"
+        report += f"🤝 Предложений помощи: {self.daily_stats['help_offers']}\n"
+        report += f"🆘 Запросов помощи: {self.daily_stats['help_requests']}\n"
+        report += f"💰 Денежных переводов: {self.daily_stats['money_offers']}\n"
+        report += f"👥 Новых волонтеров: {self.daily_stats['volunteers']}\n"
+        report += f"\n✉️ Всего заявок: {self.daily_stats['help_offers'] + self.daily_stats['help_requests']}"
+        
+        await self.bot.send_message(
+            chat_id=self.admin_chat_id,
+            text=report,
+            parse_mode="Markdown"
         )
-    except Exception as e:
-        logging.error(f"❌ Ошибка запуска планировщика: {e}")
-
-async def on_shutdown():
-    """Действия при остановке бота"""
-    logging.info("Бот остановлен")
-
-async def main():
-    """Главная функция запуска бота"""
-    # Проверяем наличие токена
-    if not config.TOKEN:
-        logging.error("Токен не найден! Проверьте переменные окружения или config.py")
-        return
     
-    logging.info(f"🤖 Токен загружен: {config.TOKEN[:10]}...")
-    logging.info("Запуск бота...")
+    def reset_daily_stats(self):
+        """Сброс статистики на новый день"""
+        self.daily_stats = {
+            'date': datetime.now().date(),
+            'help_offers': 0,
+            'help_requests': 0,
+            'money_offers': 0,
+            'volunteers': 0
+        }
     
-    # Создаем объекты бота и диспетчера
-    bot = Bot(token=config.TOKEN)
-    dp = Dispatcher(storage=MemoryStorage())
+    def add_request(self, req_id: int, user_name: str, phone: str, category: str, req_type: str):
+        """Добавление новой заявки в систему"""
+        self.pending_requests[req_id] = {
+            'user': user_name,
+            'phone': phone,
+            'category': category,
+            'type': req_type,
+            'timestamp': datetime.now(),
+            'answered': False,
+            'notified_12h': False,
+            'notified_24h': False
+        }
+        
+        if req_type == 'help':
+            self.daily_stats['help_offers'] += 1
+        elif req_type == 'request':
+            self.daily_stats['help_requests'] += 1
+        elif req_type == 'money':
+            self.daily_stats['money_offers'] += 1
     
-    # Подключаем router с обработчиками
-    dp.include_router(router)
-    
-    # Регистрируем функции запуска и остановки
-    dp.startup.register(lambda: on_startup(bot))
-    dp.shutdown.register(on_shutdown)
-    
-    # Удаляем вебхук
-    await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("✅ Вебхук удален")
-    
-    logging.info("🚀 Бот готов к работе!")
-    
-    # Запускаем бота
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await bot.session.close()
-
-if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logging.info("Бот остановлен пользователем")
-    except Exception as e:
-        logging.error(f"Критическая ошибка: {e}")
+    def mark_as_answered(self, req_id: int):
+        """Отметить заявку как отвеченную"""
+        if req_id in self.pending_requests:
+            self.pending_requests[req_id]['answered'] = True
