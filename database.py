@@ -160,6 +160,55 @@ async def add_good_deed(user_id: int, deed_type: str, description: str, points: 
         row = await cursor.fetchone()
         return row[0] if row else None
 
+async def verify_deed(deed_id: int, verified_by: int, approved: bool = True):
+    """Подтверждение или отклонение доброго дела"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        # Получаем информацию о деле
+        cursor = await db.execute('SELECT user_id, points, family_id FROM good_deeds WHERE deed_id = ?', (deed_id,))
+        deed = await cursor.fetchone()
+        
+        if not deed:
+            return False
+        
+        user_id, points, family_id = deed
+        
+        if approved:
+            # Подтверждаем дело
+            await db.execute('''
+                UPDATE good_deeds 
+                SET status = 'verified', verified_at = ?, verified_by = ?
+                WHERE deed_id = ?
+            ''', (datetime.now().isoformat(), verified_by, deed_id))
+            
+            # Начисляем баллы пользователю
+            await db.execute('''
+                UPDATE users SET total_points = total_points + ?, help_count = help_count + 1
+                WHERE user_id = ?
+            ''', (points, user_id))
+            
+            # Добавляем в историю
+            await db.execute('''
+                INSERT INTO points_history (user_id, points, reason, created_at)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, points, f"Доброе дело #{deed_id}", datetime.now().isoformat()))
+            
+            # Если есть семья, начисляем баллы и семье
+            if family_id:
+                await db.execute('''
+                    UPDATE families SET total_points = total_points + ?
+                    WHERE family_id = ?
+                ''', (points, family_id))
+        else:
+            # Отклоняем дело
+            await db.execute('''
+                UPDATE good_deeds 
+                SET status = 'rejected', verified_at = ?, verified_by = ?
+                WHERE deed_id = ?
+            ''', (datetime.now().isoformat(), verified_by, deed_id))
+        
+        await db.commit()
+        return True
+
 async def get_leaderboard(limit: int = 10):
     """Топ пользователей по баллам"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
