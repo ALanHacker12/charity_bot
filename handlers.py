@@ -42,6 +42,7 @@ class VolunteerStates(StatesGroup):
     waiting_for_child_id = State()
     waiting_for_deed_type = State()
     waiting_for_deed_description = State()
+    waiting_for_deed_phone = State()  # Новое состояние для телефона
     waiting_for_deed_photo = State()
 
 def generate_request_id():
@@ -486,6 +487,7 @@ async def process_deed_description(message: Message, state: FSMContext):
     
     await state.update_data(deed_description=message.text)
     
+    # Спрашиваем телефон
     await message.answer(
         "📞 Пожалуйста, оставьте ваш номер телефона для связи:",
         reply_markup=ReplyKeyboardMarkup(
@@ -493,7 +495,113 @@ async def process_deed_description(message: Message, state: FSMContext):
             resize_keyboard=True
         )
     )
+    await state.set_state(VolunteerStates.waiting_for_deed_phone)
+
+@router.message(VolunteerStates.waiting_for_deed_phone)
+async def process_deed_phone(message: Message, state: FSMContext, bot: Bot):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    phone = message.text
+    await state.update_data(phone=phone)
+    
+    # Спрашиваем про фото
+    await message.answer(
+        "📸 Хотите добавить фото? (это поможет подтвердить ваше доброе дело и получить дополнительные баллы!)",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="✅ Добавить фото")],
+                [KeyboardButton(text="⏭ Пропустить")]
+            ],
+            resize_keyboard=True
+        )
+    )
     await state.set_state(VolunteerStates.waiting_for_deed_photo)
+
+@router.message(VolunteerStates.waiting_for_deed_photo, F.content_type == ContentType.PHOTO)
+async def process_deed_photo(message: Message, state: FSMContext, bot: Bot):
+    try:
+        photo = message.photo[-1]
+        file_id = photo.file_id
+        
+        data = await state.get_data()
+        deed_type = data.get('deed_type')
+        description = data.get('deed_description')
+        points = data.get('deed_points', 10)
+        phone = data.get('phone', 'Не указан')
+        
+        deed_id = await add_good_deed(
+            message.from_user.id,
+            deed_type,
+            description,
+            points,
+            file_id
+        )
+        
+        await message.answer(
+            f"✅ Спасибо! Ваше доброе дело зарегистрировано под номером #{deed_id}.\n\n"
+            f"Оно будет проверено модератором. Базовые баллы: {points} 🌟",
+            reply_markup=nav.get_volunteer_keyboard()
+        )
+        
+        await notify_admin(
+            bot,
+            f"📝 НОВОЕ ДОБРОЕ ДЕЛО #{deed_id}",
+            f"👤 ФИО: {message.from_user.full_name}\n"
+            f"🆔 Username: {get_username(message.from_user)}\n"
+            f"📞 Телефон: {phone}\n"
+            f"Тип: {deed_type}\n"
+            f"Описание: {description}\n"
+            f"Баллы: {points}"
+        )
+        
+        await state.clear()
+    except Exception as e:
+        print(f"❌ Ошибка в process_deed_photo: {e}")
+        await message.answer("Произошла ошибка. Попробуйте позже.")
+        await state.clear()
+
+@router.message(VolunteerStates.waiting_for_deed_photo, F.text == "⏭ Пропустить")
+async def skip_deed_photo(message: Message, state: FSMContext, bot: Bot):
+    try:
+        data = await state.get_data()
+        deed_type = data.get('deed_type')
+        description = data.get('deed_description')
+        points = data.get('deed_points', 10)
+        phone = data.get('phone', 'Не указан')
+        
+        deed_id = await add_good_deed(
+            message.from_user.id,
+            deed_type,
+            description,
+            points,
+            None
+        )
+        
+        await message.answer(
+            f"✅ Спасибо! Ваше доброе дело зарегистрировано под номером #{deed_id}.\n\n"
+            f"Оно будет проверено модератором. Базовые баллы: {points} 🌟",
+            reply_markup=nav.get_volunteer_keyboard()
+        )
+        
+        await notify_admin(
+            bot,
+            f"📝 НОВОЕ ДОБРОЕ ДЕЛО #{deed_id}",
+            f"👤 ФИО: {message.from_user.full_name}\n"
+            f"🆔 Username: {get_username(message.from_user)}\n"
+            f"📞 Телефон: {phone}\n"
+            f"Тип: {deed_type}\n"
+            f"Описание: {description}\n"
+            f"Баллы: {points}"
+        )
+        
+        await state.clear()
+    except Exception as e:
+        print(f"❌ Ошибка в skip_deed_photo: {e}")
+        await message.answer("Произошла ошибка. Попробуйте позже.")
+        await state.clear()
 
 @router.message(F.text == "📦 Отправить продукцию")
 async def offer_product(message: Message, state: FSMContext):
