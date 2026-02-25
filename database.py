@@ -255,3 +255,74 @@ async def get_points_history(user_id: int, days: int = 30):
             ORDER BY created_at DESC
         ''', (user_id, cutoff))
         return await cursor.fetchall()
+
+async def add_good_deed(user_id: int, deed_type: str, description: str, points: int, photo_id: str = None, phone: str = None) -> int:
+    """Добавить доброе дело на проверку"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute('''
+            INSERT INTO good_deeds 
+            (user_id, deed_type, description, points, photo_id, phone, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ''', (user_id, deed_type, description, points, photo_id, phone, 'pending'))
+        await db.commit()
+        return cursor.lastrowid
+
+async def verify_deed(deed_id: int, admin_id: int, approved: bool = True) -> tuple:
+    """Подтвердить или отклонить доброе дело"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        # Получаем информацию о деле
+        cursor = await db.execute('''
+            SELECT user_id, points FROM good_deeds WHERE id = ? AND status = 'pending'
+        ''', (deed_id,))
+        deed = await cursor.fetchone()
+        
+        if not deed:
+            return False, "Дело не найдено или уже обработано", 0
+        
+        user_id, points = deed
+        
+        if approved:
+            # Подтверждаем дело
+            await db.execute('''
+                UPDATE good_deeds 
+                SET status = 'approved', approved_by = ?, approved_at = datetime('now')
+                WHERE id = ?
+            ''', (admin_id, deed_id))
+            
+            # Начисляем баллы пользователю
+            await db.execute('''
+                UPDATE users SET total_points = total_points + ? WHERE user_id = ?
+            ''', (points, user_id))
+            
+            # Записываем в историю
+            await db.execute('''
+                INSERT INTO points_history (user_id, points, reason, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+            ''', (user_id, points, f'Доброе дело #{deed_id}'))
+            
+            await db.commit()
+            return True, f"Дело #{deed_id} подтверждено", points
+        else:
+            # Отклоняем дело
+            await db.execute('''
+                UPDATE good_deeds 
+                SET status = 'rejected', approved_by = ?, approved_at = datetime('now')
+                WHERE id = ?
+            ''', (admin_id, deed_id))
+            await db.commit()
+            return True, f"Дело #{deed_id} отклонено", 0
+
+async def get_pending_deeds(limit: int = 10):
+    """Получить неподтвержденные добрые дела"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute('''
+            SELECT gd.id, gd.user_id, u.username, gd.deed_type, gd.description, 
+                   gd.points, gd.photo_id, gd.created_at
+            FROM good_deeds gd
+            JOIN users u ON gd.user_id = u.user_id
+            WHERE gd.status = 'pending'
+            ORDER BY gd.created_at ASC
+            LIMIT ?
+        ''', (limit,))
+        return await cursor.fetchall()
+
