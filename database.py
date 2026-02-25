@@ -326,3 +326,47 @@ async def get_pending_deeds(limit: int = 10):
         ''', (limit,))
         return await cursor.fetchall()
 
+async def init_database():
+    """Инициализация всех таблиц БД"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        # Существующие таблицы (которые уже есть)
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                full_name TEXT,
+                age INTEGER,
+                total_points INTEGER DEFAULT 0,
+                help_count INTEGER DEFAULT 0,
+                is_adult BOOLEAN,
+                reg_date TIMESTAMP
+            )
+        ''')
+        
+        # Добавляем новую таблицу для добрых дел
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS good_deeds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                deed_type TEXT NOT NULL,
+                description TEXT NOT NULL,
+                points INTEGER DEFAULT 10,
+                photo_id TEXT,
+                phone TEXT,
+                status TEXT DEFAULT 'pending',
+                approved_by INTEGER,
+                created_at TIMESTAMP,
+                approved_at TIMESTAMP
+            )
+        ''')
+        
+        # Добавляем колонку phone, если её нет в существующей таблице
+        try:
+            await db.execute('ALTER TABLE good_deeds ADD COLUMN phone TEXT')
+        except:
+            pass  # колонка уже существует
+        
+        await db.commit()
+        print("✅ База данных инициализирована")
+
+
