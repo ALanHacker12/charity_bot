@@ -4,13 +4,14 @@ from dotenv import load_dotenv
 # Загружаем переменные окружения из файла .env (для локальной разработки)
 load_dotenv()
 
-# Токен бота - берем из переменных окружения, если нет - используем запасной
-TOKEN = os.getenv('TOKEN') or '8365109516:AAFrZj0fTHCriYKRJP9FJKgj7FGknXR3XK8'
+# Токен бота - берем из переменных окружения
+# На BotHost нужно добавить переменную TOKEN в настройках!
+TOKEN = os.getenv('TOKEN')
 
 # ID администратора для уведомлений
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID') or '6663434089'
+# На BotHost можно добавить переменную ADMIN_CHAT_ID или использовать значение по умолчанию
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '6663434089')
 
-# Проверяем наличие токена
 if not TOKEN:
     print("⚠️ ВНИМАНИЕ: Токен не найден в переменных окружения!")
     print("Добавьте переменную TOKEN в настройках BotHost")
@@ -21,5 +22,3 @@ PAYMENT_DETAILS = {
     'tinkoff': '+7 917 355 1122',
     'contact': '@zilya_gafarova'
 }
-
-

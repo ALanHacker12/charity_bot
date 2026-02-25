@@ -2,24 +2,20 @@ from aiogram import types, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, FSInputFile
 from aiogram import Router
 from aiogram.enums import ContentType
 import os
 import aiosqlite
 import config
 import keyboards as nav
-from database import DATABASE_PATH, register_user, get_user_stats, create_family, get_leaderboard, get_family_leaderboard, get_points_history, add_good_deed, verify_deed, get_pending_deeds
+from database import DATABASE_PATH, register_user, get_user_stats, create_family, get_leaderboard, get_family_leaderboard, get_points_history, add_good_deed, verify_deed
 from scheduler import NotificationScheduler
 import random
 from datetime import datetime
 
 router = Router()
 
-# Константы
-ADMIN_IDS = [6663434089]  # Список админов (можно добавить несколько)
-
-# FSM состояния
 class HelpOffer(StatesGroup):
     waiting_for_category = State()
     waiting_for_details = State()
@@ -49,257 +45,26 @@ class VolunteerStates(StatesGroup):
     waiting_for_deed_phone = State()
     waiting_for_deed_photo = State()
 
-# Вспомогательные функции
 def generate_request_id():
     return random.randint(1000, 9999)
 
 def get_username(user):
-    """Получить username пользователя"""
     return f"@{user.username}" if user.username else "не указан"
-
-def is_admin(user_id: int) -> bool:
-    """Проверка, является ли пользователь админом"""
-    return user_id in ADMIN_IDS
-
-# ==================== АДМИН-КОМАНДЫ (ТОЛЬКО ДЛЯ АДМИНОВ) ====================
-
-@router.message(Command("stats"))
-async def get_stats(message: Message, bot: Bot):
-    """Статистика за сегодня (только для админа)"""
-    if not is_admin(message.from_user.id):
-        return  # Просто игнорируем
-    
-    if not hasattr(bot, 'scheduler'):
-        await message.answer("❌ Планировщик не инициализирован")
-        return
-    
-    stats = bot.scheduler.daily_stats
-    active = sum(1 for req in bot.scheduler.pending_requests.values() if not req.get('answered', False))
-    
-    text = f"📊 ТЕКУЩАЯ СТАТИСТИКА\n\n"
-    text += f"📅 Дата: {stats['date'].strftime('%d.%m.%Y')}\n"
-    text += f"🤝 Предложений помощи: {stats['help_offers']}\n"
-    text += f"🆘 Запросов помощи: {stats['help_requests']}\n"
-    text += f"💰 Денежных переводов: {stats['money_offers']}\n"
-    text += f"👥 Новых волонтеров: {stats['volunteers']}\n"
-    text += f"⏳ Активных заявок: {active}\n"
-    text += f"📋 Всего заявок: {stats['help_offers'] + stats['help_requests'] + stats['money_offers']}"
-    
-    await message.answer(text)
-
-@router.message(Command("all_stats"))
-async def get_all_stats(message: Message, bot: Bot):
-    """Полная статистика (только для админа)"""
-    if not is_admin(message.from_user.id):
-        return
-    
-    if not hasattr(bot, 'scheduler'):
-        await message.answer("❌ Планировщик не инициализирован")
-        return
-    
-    total_requests = len(bot.scheduler.pending_requests)
-    answered = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('answered', False))
-    pending = total_requests - answered
-    
-    money_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'money')
-    help_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'help')
-    request_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'request')
-    
-    # Получаем неподтвержденные добрые дела
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        cursor = await db.execute('''
-            SELECT COUNT(*) FROM good_deeds WHERE status = 'pending'
-        ''')
-        pending_deeds = await cursor.fetchone()
-        pending_deeds_count = pending_deeds[0] if pending_deeds else 0
-    
-    text = f"📋 ПОЛНАЯ СТАТИСТИКА ЗА ВСЕ ВРЕМЯ\n\n"
-    text += f"📊 Всего заявок: {total_requests}\n"
-    text += f"✅ Выполнено: {answered}\n"
-    text += f"⏳ В ожидании: {pending}\n"
-    text += f"🤝 Добрых дел на проверке: {pending_deeds_count}\n"
-    text += f"\n📊 По категориям:\n"
-    text += f"💰 Денежная помощь: {money_requests}\n"
-    text += f"🤝 Предложения помощи: {help_requests}\n"
-    text += f"🆘 Запросы помощи: {request_requests}\n"
-    
-    await message.answer(text)
-
-@router.message(Command("pending"))
-async def show_pending_deeds(message: Message):
-    """Показать неподтвержденные добрые дела (только для админа)"""
-    if not is_admin(message.from_user.id):
-        return
-    
-    deeds = await get_pending_deeds()
-    
-    if not deeds:
-        await message.answer("✅ Нет неподтвержденных добрых дел")
-        return
-    
-    for deed in deeds[:5]:  # Показываем по 5 за раз, чтобы не спамить
-        deed_id, user_id, username, deed_type, description, points, photo_id, created_at = deed
-        
-        text = (
-            f"📝 Доброе дело #{deed_id}\n\n"
-            f"👤 От: {username}\n"
-            f"📋 Тип: {deed_type}\n"
-            f"📝 Описание: {description}\n"
-            f"🌟 Баллы: {points}\n"
-            f"📅 Дата: {created_at[:16]}\n"
-        )
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"approve_{deed_id}"),
-                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{deed_id}")
-            ]
-        ])
-        
-        if photo_id and photo_id != "None":
-            await message.bot.send_photo(
-                chat_id=message.chat.id,
-                photo=photo_id,
-                caption=text,
-                reply_markup=keyboard
-            )
-        else:
-            await message.answer(text, reply_markup=keyboard)
-
-# ==================== ОБРАБОТЧИКИ КНОПОК ПОДТВЕРЖДЕНИЯ ====================
-
-@router.callback_query(lambda c: c.data.startswith('approve_') or c.data.startswith('reject_'))
-async def process_deed_confirmation(callback: CallbackQuery, bot: Bot):
-    """Обработка подтверждения/отклонения доброго дела"""
-    # Проверяем, админ ли нажимает
-    if not is_admin(callback.from_user.id):
-        await callback.answer("У вас нет прав для этого действия!", show_alert=True)
-        return
-    
-    action, deed_id = callback.data.split('_')
-    deed_id = int(deed_id)
-    
-    if action == 'approve':
-        # Подтверждаем дело
-        success, message_text, points = await verify_deed(deed_id, callback.from_user.id, approved=True)
-        
-        if success:
-            # Получаем user_id владельца дела
-            async with aiosqlite.connect(DATABASE_PATH) as db:
-                cursor = await db.execute('SELECT user_id FROM good_deeds WHERE id = ?', (deed_id,))
-                result = await cursor.fetchone()
-                if result:
-                    user_id = result[0]
-                    
-                    # Уведомляем пользователя
-                    try:
-                        await bot.send_message(
-                            user_id,
-                            f"✅ Ваше доброе дело #{deed_id} подтверждено!\n"
-                            f"Вам начислено {points} 🌟"
-                        )
-                    except:
-                        pass
-            
-            await callback.message.edit_text(
-                f"{callback.message.caption or callback.message.text}\n\n"
-                f"✅ Подтверждено администратором @{callback.from_user.username}"
-            )
-            await callback.answer("Дело подтверждено!", show_alert=False)
-        else:
-            await callback.answer(message_text, show_alert=True)
-    
-    else:  # reject
-        # Отклоняем дело
-        success, message_text, _ = await verify_deed(deed_id, callback.from_user.id, approved=False)
-        
-        if success:
-            # Получаем user_id владельца дела
-            async with aiosqlite.connect(DATABASE_PATH) as db:
-                cursor = await db.execute('SELECT user_id FROM good_deeds WHERE id = ?', (deed_id,))
-                result = await cursor.fetchone()
-                if result:
-                    user_id = result[0]
-                    
-                    # Уведомляем пользователя
-                    try:
-                        await bot.send_message(
-                            user_id,
-                            f"❌ Ваше доброе дело #{deed_id} отклонено.\n"
-                            f"Пожалуйста, свяжитесь с администратором для уточнения деталей."
-                        )
-                    except:
-                        pass
-            
-            await callback.message.edit_text(
-                f"{callback.message.caption or callback.message.text}\n\n"
-                f"❌ Отклонено администратором @{callback.from_user.username}"
-            )
-            await callback.answer("Дело отклонено!", show_alert=False)
-        else:
-            await callback.answer(message_text, show_alert=True)
-
-# ==================== ОБРАБОТЧИК /done_ (тоже только для админа) ====================
-
-@router.message(lambda message: message.text and message.text.startswith('/done_'))
-async def mark_as_done(message: Message, bot: Bot):
-    """Отметить заявку как выполненную (только для админа)"""
-    if not is_admin(message.from_user.id):
-        return
-    
-    try:
-        request_id = int(message.text.replace('/done_', ''))
-        
-        if hasattr(bot, 'scheduler') and request_id in bot.scheduler.pending_requests:
-            bot.scheduler.mark_as_answered(request_id)
-            await message.answer(f"✅ Заявка #{request_id} отмечена как выполненная")
-        else:
-            await message.answer(f"❌ Заявка #{request_id} не найдена")
-    except:
-        await message.answer("❌ Неверный формат команды")
-
-# ==================== ОСНОВНЫЕ КОМАНДЫ (ДЛЯ ВСЕХ) ====================
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     
-    current_dir = os.path.dirname(__file__)
-    image_path = os.path.join(current_dir, "images", "welcome.jpg")
-    
-    try:
-        if os.path.exists(image_path):
-            photo = FSInputFile(image_path)
-            await message.answer_photo(
-                photo=photo,
-                caption=(
-                    "👋 Добро пожаловать! \n"
-                    "Благодарю за понимание и желание поддержать наших защитников❤️\n"
-                    "Я помогу вам выбрать способ помощи.\n"
-                    "Выбирайте по - возможности. \n"
-                    "Возвращайтесь к нам по - желанию. \n"
-                    "Рекомендуйте неравнодушным! \n"
-                    "Добра Вам и мира🌟"
-                ),
-                reply_markup=nav.get_main_keyboard()
-            )
-        else:
-            await message.answer(
-                "👋 Добро пожаловать! \n"
-                "Благодарю за понимание и желание поддержать наших защитников❤️\n"
-                "Я помогу вам выбрать способ помощи.\n"
-                "Выбирайте по - возможности. \n"
-                "Возвращайтесь к нам по - желанию. \n"
-                "Рекомендуйте неравнодушным! \n"
-                "Добра Вам и мира🌟",
-                reply_markup=nav.get_main_keyboard()
-            )
-    except Exception as e:
-        print(f"Ошибка при отправке фото: {e}")
-        await message.answer(
-            "👋 Добро пожаловать!",
-            reply_markup=nav.get_main_keyboard()
-        )
+    await message.answer(
+        "👋 Добро пожаловать! \n"
+        "Благодарю за понимание и желание поддержать наших защитников❤️\n"
+        "Я помогу вам выбрать способ помощи.\n"
+        "Выбирайте по - возможности. \n"
+        "Возвращайтесь к нам по - желанию. \n"
+        "Рекомендуйте неравнодушным! \n"
+        "Добра Вам и мира🌟",
+        reply_markup=nav.get_main_keyboard()
+    )
 
 @router.message(F.text == "🤝 Хочу помочь")
 async def want_to_help(message: Message, state: FSMContext):
@@ -535,22 +300,12 @@ async def show_my_stats(message: Message):
     
     total_points, help_count, username, full_name, age, is_adult, reg_date = stats
     
-    # Получаем количество неподтвержденных дел
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        cursor = await db.execute(
-            'SELECT COUNT(*) FROM good_deeds WHERE user_id = ? AND status = ?',
-            (message.from_user.id, 'pending')
-        )
-        pending_count = await cursor.fetchone()
-        pending_count = pending_count[0] if pending_count else 0
-    
     await message.answer(
         f"📊 Ваша статистика\n\n"
         f"👤 Имя: {full_name}\n"
         f"🎂 Возраст: {age} лет\n"
         f"🌟 Всего баллов: {total_points}\n"
         f"🤝 Добрых дел: {help_count}\n"
-        f"⏳ На проверке: {pending_count}\n"
         f"📅 Участник с: {reg_date[:10] if reg_date else 'недавно'}"
     )
 
@@ -699,7 +454,6 @@ async def process_deed_description(message: Message, state: FSMContext):
     
     await state.update_data(deed_description=message.text)
     
-    # Спрашиваем телефон
     await message.answer(
         "📞 Пожалуйста, оставьте ваш номер телефона для связи:",
         reply_markup=ReplyKeyboardMarkup(
@@ -719,7 +473,6 @@ async def process_deed_phone(message: Message, state: FSMContext, bot: Bot):
     phone = message.text
     await state.update_data(phone=phone)
     
-    # Спрашиваем про фото
     await message.answer(
         "📸 Хотите добавить фото? (это поможет подтвердить ваше доброе дело и получить дополнительные баллы!)",
         reply_markup=ReplyKeyboardMarkup(
@@ -749,57 +502,29 @@ async def process_deed_photo(message: Message, state: FSMContext, bot: Bot):
             deed_type,
             description,
             points,
-            file_id,
-            phone  # Добавил телефон в функцию
+            file_id
         )
         
         await message.answer(
             f"✅ Спасибо! Ваше доброе дело зарегистрировано под номером #{deed_id}.\n\n"
-            f"Оно будет проверено модератором. После подтверждения вы получите {points} 🌟\n\n"
-            f"Статус: ⏳ На проверке",
+            f"Оно будет проверено модератором. Базовые баллы: {points} 🌟",
             reply_markup=nav.get_volunteer_keyboard()
         )
         
-        # Отправляем админу на подтверждение
-        admin_id = ADMIN_IDS[0]
-        username = get_username(message.from_user)
-        
-        admin_text = (
-            f"📝 НОВОЕ ДОБРОЕ ДЕЛО #{deed_id}\n\n"
-            f"👤 От: {message.from_user.full_name}\n"
-            f"🆔 Username: {username}\n"
+        await notify_admin(
+            bot,
+            f"📝 НОВОЕ ДОБРОЕ ДЕЛО #{deed_id}",
+            f"👤 ФИО: {message.from_user.full_name}\n"
+            f"🆔 Username: {get_username(message.from_user)}\n"
             f"📞 Телефон: {phone}\n"
-            f"📋 Тип: {deed_type}\n"
-            f"📝 Описание: {description}\n"
-            f"🌟 Баллы: {points}\n"
-            f"📅 Дата: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n"
-            f"\n🔔 Ожидает подтверждения!"
+            f"Тип: {deed_type}\n"
+            f"Описание: {description}\n"
+            f"Баллы: {points}"
         )
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"approve_{deed_id}"),
-                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{deed_id}")
-            ]
-        ])
-        
-        if file_id:
-            await bot.send_photo(
-                chat_id=admin_id,
-                photo=file_id,
-                caption=admin_text,
-                reply_markup=keyboard
-            )
-        else:
-            await bot.send_message(
-                chat_id=admin_id,
-                text=admin_text,
-                reply_markup=keyboard
-            )
         
         await state.clear()
     except Exception as e:
-        print(f"Ошибка в process_deed_photo: {e}")
+        print(f"❌ Ошибка в process_deed_photo: {e}")
         await message.answer("Произошла ошибка. Попробуйте позже.")
         await state.clear()
 
@@ -817,71 +542,555 @@ async def skip_deed_photo(message: Message, state: FSMContext, bot: Bot):
             deed_type,
             description,
             points,
-            None,
-            phone
+            None
         )
         
         await message.answer(
             f"✅ Спасибо! Ваше доброе дело зарегистрировано под номером #{deed_id}.\n\n"
-            f"Оно будет проверено модератором. После подтверждения вы получите {points} 🌟\n\n"
-            f"Статус: ⏳ На проверке",
+            f"Оно будет проверено модератором. Базовые баллы: {points} 🌟",
             reply_markup=nav.get_volunteer_keyboard()
         )
         
-        # Отправляем админу на подтверждение
-        admin_id = ADMIN_IDS[0]
-        username = get_username(message.from_user)
-        
-        admin_text = (
-            f"📝 НОВОЕ ДОБРОЕ ДЕЛО #{deed_id}\n\n"
-            f"👤 От: {message.from_user.full_name}\n"
-            f"🆔 Username: {username}\n"
+        await notify_admin(
+            bot,
+            f"📝 НОВОЕ ДОБРОЕ ДЕЛО #{deed_id}",
+            f"👤 ФИО: {message.from_user.full_name}\n"
+            f"🆔 Username: {get_username(message.from_user)}\n"
             f"📞 Телефон: {phone}\n"
-            f"📋 Тип: {deed_type}\n"
-            f"📝 Описание: {description}\n"
-            f"🌟 Баллы: {points}\n"
-            f"📅 Дата: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n"
-            f"\n🔔 Ожидает подтверждения!"
-        )
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"approve_{deed_id}"),
-                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{deed_id}")
-            ]
-        ])
-        
-        await bot.send_message(
-            chat_id=admin_id,
-            text=admin_text,
-            reply_markup=keyboard
+            f"Тип: {deed_type}\n"
+            f"Описание: {description}\n"
+            f"Баллы: {points}"
         )
         
         await state.clear()
     except Exception as e:
-        print(f"Ошибка в skip_deed_photo: {e}")
+        print(f"❌ Ошибка в skip_deed_photo: {e}")
         await message.answer("Произошла ошибка. Попробуйте позже.")
         await state.clear()
 
-# ==================== ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (сократил для экономии места, но они остаются теми же) ====================
-
-# Здесь идут все остальные обработчики из твоего исходного кода:
-# - help_offer handlers
-# - help_request handlers
-# - psych_help handlers
-# - child_help handlers
-# - back_to_main и т.д.
-
 @router.message(F.text == "📦 Отправить продукцию")
 async def offer_product(message: Message, state: FSMContext):
-    # ... тот же код, что у тебя был ...
-    pass
+    await state.update_data(offer_type="product", category="Отправка продукции")
+    await message.answer(
+        "📦 Расскажите, какую продукцию вы хотите отправить?\n"
+        "(например, 'Теплые носки, 20 пар, размер M')"
+    )
+    await state.set_state(HelpOffer.waiting_for_details)
 
-# ... и так далее для всех остальных хендлеров ...
+@router.message(F.text == "🍎 Купить питание")
+async def offer_food(message: Message, state: FSMContext):
+    await state.update_data(offer_type="food", category="Покупка питания")
+    await message.answer(
+        "🍎 Напишите, какое питание вы хотите приобрести и в каком объеме.\n"
+        "(например, 'Продуктовая корзина на месяц')"
+    )
+    await state.set_state(HelpOffer.waiting_for_details)
+
+@router.message(F.text == "🧵 Своими руками (пошив/изготовление)")
+async def offer_handmade(message: Message, state: FSMContext):
+    await state.update_data(offer_type="handmade", category="Помощь своими руками")
+    await message.answer(
+        "🧵 Расскажите, что именно вы можете сделать своими руками?\n"
+        "(например, 'Маскировочные сети, блиндажные свечи, нашлемники')"
+    )
+    await state.set_state(HelpOffer.waiting_for_details)
+
+@router.message(F.text == "💰 Помочь деньгами")
+async def offer_money(message: Message, state: FSMContext):
+    await state.update_data(category="Денежная помощь")
+    await message.answer(
+        "📞 Пожалуйста, оставьте ваш номер телефона для связи:\n"
+        "(например, +7 999 123-45-67)",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpOffer.waiting_for_phone)
+
+@router.message(F.text == "🧠 Поддержка психолога")
+async def offer_psych(message: Message, state: FSMContext):
+    await state.update_data(offer_type="psych_offer", category="Поддержка психолога (оказываю)")
+    await message.answer(
+        "🧠 Расскажите о себе: кто вы по образованию, какой у вас опыт?\n"
+        "Как с вами связаться?"
+    )
+    await state.set_state(HelpOffer.waiting_for_details)
+
+@router.message(F.text == "🆘 Другая поддержка")
+async def offer_other(message: Message, state: FSMContext):
+    await state.update_data(offer_type="other", category="Другая поддержка")
+    await message.answer(
+        "🆘 Расскажите, какую поддержку вы можете предложить?",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpOffer.waiting_for_details)
+
+@router.message(HelpOffer.waiting_for_details)
+async def offer_details_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    await state.update_data(details=message.text)
+    
+    await message.answer(
+        "🏙️ Из какого вы города?",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpOffer.waiting_for_city)
+
+@router.message(HelpOffer.waiting_for_city)
+async def offer_city_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    city = message.text
+    await state.update_data(city=city)
+    
+    await message.answer(
+        "📞 Пожалуйста, оставьте ваш номер телефона для связи:\n"
+        "(например, +7 999 123-45-67)",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpOffer.waiting_for_phone)
+
+@router.message(HelpOffer.waiting_for_phone)
+async def offer_phone_handler(message: Message, state: FSMContext, bot: Bot):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    phone = message.text
+    await state.update_data(phone=phone)
+    
+    user_data = await state.get_data()
+    category = user_data.get('category', 'Помощь')
+    details = user_data.get('details', '')
+    city = user_data.get('city', 'Не указан')
+    
+    request_id = generate_request_id()
+    
+    if category == "Денежная помощь":
+        await message.answer(
+            f"💰 Реквизиты для перевода:\n\n"
+            f"Сбербанк: +7 917 355 1122\n"
+            f"Тинькофф: +7 917 355 1122\n\n"
+            f"После перевода напишите @zilya_gafarova",
+            reply_markup=nav.get_main_keyboard()
+        )
+        
+        await message.bot.send_message(
+            chat_id=config.ADMIN_CHAT_ID,
+            text=(
+                f"💰 НОВАЯ ЗАЯВКА #{request_id}\n\n"
+                f"👤 ФИО: {message.from_user.full_name}\n"
+                f"🆔 Username: {get_username(message.from_user)}\n"
+                f"🏙️ Город: {city}\n"
+                f"📞 Телефон: {phone}\n"
+                f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n\n"
+                f"Команда для отметки: /done_{request_id}"
+            )
+        )
+        
+        if hasattr(bot, 'scheduler'):
+            bot.scheduler.add_request(
+                request_id, 
+                message.from_user.full_name, 
+                phone, 
+                category, 
+                'money'
+            )
+        
+        await state.clear()
+        return
+    
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="✅ Добавить фото")],
+            [KeyboardButton(text="⏭ Пропустить")]
+        ],
+        resize_keyboard=True
+    )
+    
+    await message.answer(
+        "📸 Хотите добавить фото?",
+        reply_markup=keyboard
+    )
+    await state.set_state(HelpOffer.waiting_for_photo)
+    await state.update_data(request_id=request_id)
+
+@router.message(HelpOffer.waiting_for_photo, F.text == "✅ Добавить фото")
+async def add_photo_button_handler(message: Message, state: FSMContext):
+    await message.answer(
+        "📸 Отправьте фото товаров:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+
+@router.message(HelpOffer.waiting_for_photo, F.content_type == ContentType.PHOTO)
+async def handle_photo(message: Message, state: FSMContext, bot: Bot):
+    try:
+        photo = message.photo[-1]
+        file_id = photo.file_id
+        
+        await state.update_data(photo_file_id=file_id)
+        
+        user_data = await state.get_data()
+        category = user_data.get('category', 'Помощь')
+        details = user_data.get('details', '')
+        phone = user_data.get('phone', 'Не указан')
+        city = user_data.get('city', 'Не указан')
+        request_id = user_data.get('request_id', generate_request_id())
+        
+        await message.answer(
+            f"✅ Спасибо! Ваше предложение принято!\n\n"
+            f"📋 Категория: {category}\n"
+            f"📝 Описание: {details}\n"
+            f"🏙️ Город: {city}\n"
+            f"📞 Телефон: {phone}\n"
+            f"🆔 Номер заявки: #{request_id}\n\n"
+            f"С вами свяжутся в ближайшее время.",
+            reply_markup=nav.get_main_keyboard()
+        )
+        
+        admin_chat_id = config.ADMIN_CHAT_ID
+        caption = (
+            f"🔔 НОВАЯ ЗАЯВКА #{request_id}\n\n"
+            f"👤 ФИО: {message.from_user.full_name}\n"
+            f"🆔 Username: {get_username(message.from_user)}\n"
+            f"🏙️ Город: {city}\n"
+            f"📞 Телефон: {phone}\n"
+            f"📋 Категория: {category}\n"
+            f"📝 Детали: {details}\n"
+            f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n\n"
+            f"Команда для отметки: /done_{request_id}"
+        )
+        await bot.send_photo(chat_id=admin_chat_id, photo=file_id, caption=caption)
+        
+        if hasattr(bot, 'scheduler'):
+            bot.scheduler.add_request(
+                request_id, 
+                message.from_user.full_name, 
+                phone, 
+                category, 
+                'help'
+            )
+        
+        await state.clear()
+    except Exception as e:
+        print(f"❌ Ошибка в handle_photo: {e}")
+        await message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")
+        await state.clear()
+
+@router.message(HelpOffer.waiting_for_photo, F.text == "⏭ Пропустить")
+async def skip_photo(message: Message, state: FSMContext, bot: Bot):
+    try:
+        user_data = await state.get_data()
+        category = user_data.get('category', 'Помощь')
+        details = user_data.get('details', '')
+        phone = user_data.get('phone', 'Не указан')
+        city = user_data.get('city', 'Не указан')
+        request_id = user_data.get('request_id', generate_request_id())
+        
+        await message.answer(
+            f"✅ Спасибо! Ваше предложение принято!\n\n"
+            f"📋 Категория: {category}\n"
+            f"📝 Описание: {details}\n"
+            f"🏙️ Город: {city}\n"
+            f"📞 Телефон: {phone}\n"
+            f"🆔 Номер заявки: #{request_id}\n\n"
+            f"С вами свяжутся в ближайшее время.",
+            reply_markup=nav.get_main_keyboard()
+        )
+        
+        await notify_admin(
+            bot,
+            f"🤝 НОВАЯ ЗАЯВКА #{request_id}",
+            f"👤 ФИО: {message.from_user.full_name}\n"
+            f"🆔 Username: {get_username(message.from_user)}\n"
+            f"🏙️ Город: {city}\n"
+            f"📞 Телефон: {phone}\n"
+            f"📋 Категория: {category}\n"
+            f"📝 Детали: {details}\n"
+            f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}"
+        )
+        
+        if hasattr(bot, 'scheduler'):
+            bot.scheduler.add_request(
+                request_id, 
+                message.from_user.full_name, 
+                phone, 
+                category, 
+                'help'
+            )
+        
+        await state.clear()
+    except Exception as e:
+        print(f"❌ Ошибка в skip_photo: {e}")
+        await message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")
+        await state.clear()
+
+@router.message(HelpRequest.waiting_for_category)
+async def request_category_handler(message: Message, state: FSMContext):
+    category_map = {
+        "🥫 Нужны продукты": "Нужны продукты",
+        "👕 Нужна одежда/экипировка": "Нужна одежда/экипировка",
+        "💊 Нужны лекарства": "Нужны лекарства",
+        "🧠 Нужна поддержка психолога": "Нужна поддержка психолога",
+        "📝 Другая поддержка": "Другая поддержка"
+    }
+    
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    if message.text in category_map:
+        await state.update_data(request_category=category_map[message.text])
+        await message.answer(
+            "📝 Опишите подробно, что вам нужно\n"
+            "(конкретные продукты, размеры одежды, название лекарств и т.д.):"
+        )
+        await state.set_state(HelpRequest.waiting_for_details)
+    else:
+        await message.answer("Пожалуйста, выберите категорию из меню ниже:")
+
+@router.message(PsychHelp.waiting_for_type)
+async def psych_type_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    if message.text == "🧠 Нужна поддержка психолога":
+        await state.update_data(psych_type="need")
+        await message.answer(
+            "🧠 Расскажите, что вас беспокоит.\n\n"
+            "Вы также можете позвонить на круглосуточную горячую линию: 8-800-700-00-00"
+        )
+        await state.set_state(HelpRequest.waiting_for_details)
+    
+    elif message.text == "👩‍⚕️ Оказываю психологическую помощь":
+        await state.update_data(psych_type="offer")
+        await message.answer(
+            "🧠 Расскажите о себе:\n"
+            "• Ваше образование\n"
+            "• Опыт работы\n"
+            "• Как с вами связаться?"
+        )
+        await state.set_state(HelpOffer.waiting_for_details)
+
+@router.message(ChildHelp.waiting_for_details)
+async def child_details_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    details = message.text
+    
+    await message.answer(
+        "✅ Ваш запрос принят! Мы передадим его волонтерам.\n"
+        "С вами свяжутся в ближайшее время.",
+        reply_markup=nav.get_main_keyboard()
+    )
+    
+    await notify_admin(
+        message.bot,
+        "👶 Помощь детям",
+        f"👤 ФИО: {message.from_user.full_name}\n"
+        f"🆔 Username: {get_username(message.from_user)}\n"
+        f"📝 Детали: {details}"
+    )
+    await state.clear()
+
+@router.message(HelpRequest.waiting_for_details)
+async def request_details_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    user_data = await state.get_data()
+    category = user_data.get('request_category', 'Запрос помощи')
+    details = message.text
+    
+    await state.update_data(request_details=details)
+    await state.update_data(request_category=category)
+    
+    await message.answer(
+        "🏙️ Из какого вы города?",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpRequest.waiting_for_city)
+
+@router.message(HelpRequest.waiting_for_city)
+async def request_city_handler(message: Message, state: FSMContext, bot: Bot):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    city = message.text
+    await state.update_data(city=city)
+    
+    await message.answer(
+        "📞 Пожалуйста, оставьте ваш номер телефона для связи:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpRequest.waiting_for_phone)
+
+@router.message(HelpRequest.waiting_for_phone)
+async def request_phone_handler(message: Message, state: FSMContext, bot: Bot):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    phone = message.text
+    user_data = await state.get_data()
+    category = user_data.get('request_category', 'Запрос помощи')
+    details = user_data.get('request_details', '')
+    city = user_data.get('city', 'Не указан')
+    request_id = generate_request_id()
+    
+    await message.answer(
+        f"✅ Ваш запрос принят!\n\n"
+        f"📋 Категория: {category}\n"
+        f"📝 Детали: {details}\n"
+        f"🏙️ Город: {city}\n"
+        f"📞 Телефон: {phone}\n"
+        f"🆔 Номер заявки: #{request_id}\n\n"
+        f"Мы передадим информацию волонтерам. С вами свяжутся.",
+        reply_markup=nav.get_main_keyboard()
+    )
+    
+    await notify_admin(
+        bot,
+        f"🆘 ЗАПРОС ПОМОЩИ #{request_id}",
+        f"👤 ФИО: {message.from_user.full_name}\n"
+        f"🆔 Username: {get_username(message.from_user)}\n"
+        f"🏙️ Город: {city}\n"
+        f"📞 Телефон: {phone}\n"
+        f"📋 Категория: {category}\n"
+        f"📝 Детали: {details}\n"
+        f"⏰ Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}"
+    )
+    
+    if hasattr(bot, 'scheduler'):
+        bot.scheduler.add_request(
+            request_id, 
+            message.from_user.full_name, 
+            phone, 
+            category, 
+            'request'
+        )
+    
+    await state.clear()
+
+@router.message(F.text == "← Назад в главное меню")
+async def back_to_main(message: Message, state: FSMContext):
+    await state.clear()
+    await cmd_start(message, state)
+
+@router.message(lambda message: message.text and message.text.startswith('/done_'))
+async def mark_as_done(message: Message, bot: Bot):
+    admin_id = config.ADMIN_CHAT_ID
+    
+    if message.from_user.id != admin_id:
+        return
+    
+    try:
+        request_id = int(message.text.replace('/done_', ''))
+        
+        if hasattr(bot, 'scheduler') and request_id in bot.scheduler.pending_requests:
+            bot.scheduler.mark_as_answered(request_id)
+            await message.answer(f"✅ Заявка #{request_id} отмечена как выполненная")
+        else:
+            await message.answer(f"❌ Заявка #{request_id} не найдена")
+    except:
+        await message.answer("❌ Неверный формат команды")
+
+@router.message(Command("stats"))
+async def get_stats(message: Message, bot: Bot):
+    admin_id = config.ADMIN_CHAT_ID
+    
+    if message.from_user.id != admin_id:
+        return
+    
+    if not hasattr(bot, 'scheduler'):
+        await message.answer("❌ Планировщик не инициализирован")
+        return
+    
+    stats = bot.scheduler.daily_stats
+    
+    active = sum(1 for req in bot.scheduler.pending_requests.values() if not req.get('answered', False))
+    
+    text = f"📊 ТЕКУЩАЯ СТАТИСТИКА\n\n"
+    text += f"📅 Дата: {stats['date'].strftime('%d.%m.%Y')}\n"
+    text += f"🤝 Предложений помощи: {stats['help_offers']}\n"
+    text += f"🆘 Запросов помощи: {stats['help_requests']}\n"
+    text += f"💰 Денежных переводов: {stats['money_offers']}\n"
+    text += f"👥 Новых волонтеров: {stats['volunteers']}\n"
+    text += f"⏳ Активных заявок: {active}\n"
+    text += f"📋 Всего заявок: {stats['help_offers'] + stats['help_requests'] + stats['money_offers']}"
+    
+    await message.answer(text)
+
+@router.message(Command("all_stats"))
+async def get_all_stats(message: Message, bot: Bot):
+    admin_id = config.ADMIN_CHAT_ID
+    
+    if message.from_user.id != admin_id:
+        return
+    
+    if not hasattr(bot, 'scheduler'):
+        await message.answer("❌ Планировщик не инициализирован")
+        return
+    
+    total_requests = len(bot.scheduler.pending_requests)
+    answered = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('answered', False))
+    pending = total_requests - answered
+    
+    money_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'money')
+    help_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'help')
+    request_requests = sum(1 for req in bot.scheduler.pending_requests.values() if req.get('type') == 'request')
+    
+    text = f"📋 ПОЛНАЯ СТАТИСТИКА ЗА ВСЕ ВРЕМЯ\n\n"
+    text += f"📊 Всего заявок: {total_requests}\n"
+    text += f"✅ Выполнено: {answered}\n"
+    text += f"⏳ В ожидании: {pending}\n"
+    text += f"\n📊 По категориям:\n"
+    text += f"💰 Денежная помощь: {money_requests}\n"
+    text += f"🤝 Предложения помощи: {help_requests}\n"
+    text += f"🆘 Запросы помощи: {request_requests}\n"
+    
+    await message.answer(text)
 
 async def notify_admin(bot, title: str, text: str):
-    """Уведомление админа"""
-    admin_chat_id = ADMIN_IDS[0]
+    admin_chat_id = config.ADMIN_CHAT_ID
     try:
         await bot.send_message(
             chat_id=admin_chat_id,
@@ -891,3 +1100,14 @@ async def notify_admin(bot, title: str, text: str):
     except Exception as e:
         print(f"Ошибка отправки уведомления: {e}")
         return False
+
+async def send_report_to_user(bot: Bot, chat_id: int, photo_path: str, caption: str):
+    try:
+        photo = FSInputFile(photo_path)
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            caption=caption
+        )
+    except Exception as e:
+        print(f"Ошибка при отправке фото пользователю: {e}")

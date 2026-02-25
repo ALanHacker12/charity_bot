@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'volunteers.db')
 
 async def init_db():
-    """Инициализация базы данных (ЕДИНАЯ функция)"""
+    """Инициализация базы данных"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         # Таблица пользователей
         await db.execute('''
@@ -22,7 +22,7 @@ async def init_db():
             )
         ''')
         
-        # Таблица семейных пар (взрослый + ребенок)
+        # Таблица семейных пар
         await db.execute('''
             CREATE TABLE IF NOT EXISTS families (
                 family_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,21 +36,20 @@ async def init_db():
             )
         ''')
         
-        # Таблица добрых дел (ОБЪЕДИНЕННАЯ версия)
+        # Таблица добрых дел
         await db.execute('''
             CREATE TABLE IF NOT EXISTS good_deeds (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
+                deed_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
                 family_id INTEGER DEFAULT NULL,
-                deed_type TEXT NOT NULL,
-                description TEXT NOT NULL,
-                points INTEGER DEFAULT 10,
+                deed_type TEXT,
+                description TEXT,
+                points INTEGER,
                 photo_id TEXT,
-                phone TEXT,
                 status TEXT DEFAULT 'pending',
-                approved_by INTEGER DEFAULT NULL,
-                created_at TIMESTAMP,
-                approved_at TIMESTAMP DEFAULT NULL,
+                created_at TEXT,
+                verified_at TEXT DEFAULT NULL,
+                verified_by INTEGER DEFAULT NULL,
                 FOREIGN KEY (user_id) REFERENCES users (user_id),
                 FOREIGN KEY (family_id) REFERENCES families (family_id)
             )
@@ -69,24 +68,20 @@ async def init_db():
         ''')
         
         await db.commit()
-        print("✅ База данных инициализирована")
 
 async def register_user(user_id: int, username: str, full_name: str, age: int):
     """Регистрация нового пользователя"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        # Проверяем, существует ли уже пользователь
         cursor = await db.execute('SELECT user_id FROM users WHERE user_id = ?', (user_id,))
         existing = await cursor.fetchone()
         
         if existing:
-            # Обновляем существующего пользователя
             await db.execute('''
                 UPDATE users 
                 SET username = ?, full_name = ?, age = ?, is_adult = ?
                 WHERE user_id = ?
             ''', (username, full_name, age, age >= 55, user_id))
         else:
-            # Создаем нового пользователя
             await db.execute('''
                 INSERT INTO users (user_id, username, full_name, age, is_adult, registration_date, total_points, help_count)
                 VALUES (?, ?, ?, ?, ?, ?, 0, 0)
@@ -104,25 +99,21 @@ async def get_user_stats(user_id: int):
         return await cursor.fetchone()
 
 async def create_family(adult_id: int, child_id: int, family_name: str = None):
-    """Создание семейной пары (взрослый + ребенок)"""
+    """Создание семейной пары"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        # Проверяем, что взрослый действительно взрослый
-        cursor = await db.execute('SELECT is_adult, full_name FROM users WHERE user_id = ?', (adult_id,))
+        cursor = await db.execute('SELECT is_adult FROM users WHERE user_id = ?', (adult_id,))
         adult = await cursor.fetchone()
         if not adult or not adult[0]:
             return False, "Взрослый участник должен быть старше 55 лет"
         
-        # Проверяем, что ребенок существует и ему 10-16 лет
-        cursor = await db.execute('SELECT age, full_name FROM users WHERE user_id = ?', (child_id,))
+        cursor = await db.execute('SELECT age FROM users WHERE user_id = ?', (child_id,))
         child = await cursor.fetchone()
         if not child:
             return False, "Ребенок с таким ID не зарегистрирован"
         
-        child_age = child[0]
-        if child_age < 10 or child_age > 16:
+        if child[0] < 10 or child[0] > 16:
             return False, "Ребенок должен быть в возрасте 10-16 лет"
         
-        # Проверяем, не состоят ли уже в семье
         cursor = await db.execute('''
             SELECT family_id FROM families 
             WHERE adult_id = ? OR child_id = ? OR adult_id = ? OR child_id = ?
@@ -131,24 +122,21 @@ async def create_family(adult_id: int, child_id: int, family_name: str = None):
         if existing:
             return False, "Один из участников уже состоит в семье"
         
-        # Создаем семью
         family_name = family_name or f"Семья_{adult_id}_{child_id}"
         await db.execute('''
             INSERT INTO families (adult_id, child_id, family_name, created_date)
             VALUES (?, ?, ?, ?)
         ''', (adult_id, child_id, family_name, datetime.now().isoformat()))
         
-        # Обновляем partner_id у обоих пользователей
         await db.execute('UPDATE users SET partner_id = ? WHERE user_id = ?', (child_id, adult_id))
         await db.execute('UPDATE users SET partner_id = ? WHERE user_id = ?', (adult_id, child_id))
         
         await db.commit()
         return True, "Семья успешно создана!"
 
-async def add_good_deed(user_id: int, deed_type: str, description: str, points: int, photo_id: str = None, phone: str = None) -> int:
-    """Добавить доброе дело на проверку (ЕДИНСТВЕННАЯ функция)"""
+async def add_good_deed(user_id: int, deed_type: str, description: str, points: int, photo_id: str = None):
+    """Добавление записи о добром деле"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        # Получаем family_id пользователя
         cursor = await db.execute('SELECT partner_id FROM users WHERE user_id = ?', (user_id,))
         partner = await cursor.fetchone()
         
@@ -161,82 +149,16 @@ async def add_good_deed(user_id: int, deed_type: str, description: str, points: 
             family = await cursor.fetchone()
             family_id = family[0] if family else None
         
-        # Вставляем запись
-        cursor = await db.execute('''
-            INSERT INTO good_deeds 
-            (user_id, family_id, deed_type, description, points, photo_id, phone, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        ''', (user_id, family_id, deed_type, description, points, photo_id, phone, 'pending'))
+        await db.execute('''
+            INSERT INTO good_deeds (user_id, family_id, deed_type, description, points, photo_id, created_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+        ''', (user_id, family_id, deed_type, description, points, photo_id, datetime.now().isoformat()))
         
         await db.commit()
-        return cursor.lastrowid
-
-async def verify_deed(deed_id: int, admin_id: int, approved: bool = True) -> tuple:
-    """Подтвердить или отклонить доброе дело (ЕДИНСТВЕННАЯ функция)"""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        # Получаем информацию о деле
-        cursor = await db.execute('''
-            SELECT user_id, points, family_id FROM good_deeds WHERE id = ? AND status = 'pending'
-        ''', (deed_id,))
-        deed = await cursor.fetchone()
         
-        if not deed:
-            return False, "Дело не найдено или уже обработано", 0
-        
-        user_id, points, family_id = deed
-        
-        if approved:
-            # Подтверждаем дело
-            await db.execute('''
-                UPDATE good_deeds 
-                SET status = 'approved', approved_by = ?, approved_at = datetime('now')
-                WHERE id = ?
-            ''', (admin_id, deed_id))
-            
-            # Начисляем баллы пользователю
-            await db.execute('''
-                UPDATE users SET total_points = total_points + ?, help_count = help_count + 1
-                WHERE user_id = ?
-            ''', (points, user_id))
-            
-            # Записываем в историю
-            await db.execute('''
-                INSERT INTO points_history (user_id, points, reason, created_at)
-                VALUES (?, ?, ?, datetime('now'))
-            ''', (user_id, points, f'Доброе дело #{deed_id}'))
-            
-            # Если есть семья, начисляем баллы и семье
-            if family_id:
-                await db.execute('''
-                    UPDATE families SET total_points = total_points + ?
-                    WHERE family_id = ?
-                ''', (points, family_id))
-            
-            await db.commit()
-            return True, f"Дело #{deed_id} подтверждено", points
-        else:
-            # Отклоняем дело
-            await db.execute('''
-                UPDATE good_deeds 
-                SET status = 'rejected', approved_by = ?, approved_at = datetime('now')
-                WHERE id = ?
-            ''', (admin_id, deed_id))
-            await db.commit()
-            return True, f"Дело #{deed_id} отклонено", 0
-
-async def get_pending_deeds(limit: int = 10):
-    """Получить неподтвержденные добрые дела"""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        cursor = await db.execute('''
-            SELECT gd.id, gd.user_id, u.username, gd.deed_type, gd.description, 
-                   gd.points, gd.photo_id, gd.created_at
-            FROM good_deeds gd
-            JOIN users u ON gd.user_id = u.user_id
-            WHERE gd.status = 'pending'
-            ORDER BY gd.created_at ASC
-            LIMIT ?
-        ''', (limit,))
-        return await cursor.fetchall()
+        cursor = await db.execute('SELECT last_insert_rowid()')
+        row = await cursor.fetchone()
+        return row[0] if row else None
 
 async def get_leaderboard(limit: int = 10):
     """Топ пользователей по баллам"""
