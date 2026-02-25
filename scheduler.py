@@ -1,14 +1,15 @@
 import asyncio
-import os
-from datetime import datetime, timedelta
-from aiogram import Bot
 import logging
+from datetime import datetime, timedelta
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+from aiogram import Bot
 
 class NotificationScheduler:
     def __init__(self, bot: Bot):
         self.bot = bot
-        self.admin_chat_id = os.getenv('ADMIN_CHAT_ID', '6663434089')
-        self.pending_requests = {}
+        self.scheduler = AsyncIOScheduler()
+        self.pending_requests = {}  # Словарь для хранения активных заявок
         self.daily_stats = {
             'date': datetime.now().date(),
             'help_offers': 0,
@@ -16,108 +17,125 @@ class NotificationScheduler:
             'money_offers': 0,
             'volunteers': 0
         }
-    
+        self.is_running = False
+        self.admin_id = 6663434089  # ID админа для уведомлений
+        
     async def start_scheduler(self):
         """Запуск планировщика"""
-        while True:
-            try:
-                await asyncio.sleep(3600)
-                await self.check_pending_requests()
-                
-                if datetime.now().date() > self.daily_stats['date']:
-                    await self.send_daily_report()
-                    self.reset_daily_stats()
-                    
-            except Exception as e:
-                logging.error(f"Ошибка в планировщике: {e}")
+        if self.is_running:
+            return
+            
+        self.is_running = True
+        
+        # Планируем ежедневный отчет в 21:00
+        self.scheduler.add_job(
+            self.send_daily_report,
+            trigger='cron',
+            hour=21,
+            minute=0,
+            id='daily_report'
+        )
+        
+        # Планируем проверку просроченных заявок каждый час
+        self.scheduler.add_job(
+            self.check_expired_requests,
+            trigger=IntervalTrigger(hours=1),
+            id='check_expired'
+        )
+        
+        # Запускаем планировщик
+        self.scheduler.start()
+        
+        # Отправляем уведомление о запуске
+        await self.notify_admin("🟢 **Планировщик уведомлений запущен**\nЕжедневные отчеты будут приходить в 21:00")
     
-    async def check_pending_requests(self):
-        """Проверка заявок, на которые не ответили"""
-        now = datetime.now()
-        overdue_requests = []
-        
-        for req_id, req_data in self.pending_requests.items():
-            if not req_data.get('answered', False):
-                time_passed = now - req_data['timestamp']
-                hours = time_passed.total_seconds() / 3600
-                
-                if hours >= 24 and not req_data.get('notified_24h', False):
-                    overdue_requests.append({
-                        'id': req_id,
-                        'user': req_data['user'],
-                        'category': req_data['category'],
-                        'phone': req_data['phone'],
-                        'hours': int(hours)
-                    })
-                    req_data['notified_24h'] = True
-                elif hours >= 12 and not req_data.get('notified_12h', False):
-                    req_data['notified_12h'] = True
-                    await self.bot.send_message(
-                        chat_id=self.admin_chat_id,
-                        text=f"⏰ *НАПОМИНАНИЕ*\n"
-                             f"Заявка #{req_id} ожидает ответа уже 12 часов\n"
-                             f"👤 {req_data['user']}\n"
-                             f"📞 {req_data['phone']}\n"
-                             f"📋 {req_data['category']}",
-                        parse_mode="Markdown"
-                    )
-        
-        if overdue_requests:
-            text = "⚠️ *ПРОСРОЧЕННЫЕ ЗАЯВКИ (более 24ч)*\n\n"
-            for req in overdue_requests:
-                text += f"• #{req['id']}: {req['user']} - {req['hours']}ч\n"
-            await self.bot.send_message(
-                chat_id=self.admin_chat_id,
-                text=text,
-                parse_mode="Markdown"
-            )
+    def stop(self):
+        """Остановка планировщика"""
+        self.is_running = False
+        if self.scheduler and self.scheduler.running:
+            self.scheduler.shutdown(wait=False)
     
     async def send_daily_report(self):
-        """Отправка ежедневного отчета"""
-        report = f"📊 *ОТЧЕТ ЗА {self.daily_stats['date'].strftime('%d.%m.%Y')}*\n\n"
-        report += f"🤝 Предложений помощи: {self.daily_stats['help_offers']}\n"
-        report += f"🆘 Запросов помощи: {self.daily_stats['help_requests']}\n"
-        report += f"💰 Денежных переводов: {self.daily_stats['money_offers']}\n"
-        report += f"👥 Новых волонтеров: {self.daily_stats['volunteers']}\n"
-        report += f"\n✉️ Всего заявок: {self.daily_stats['help_offers'] + self.daily_stats['help_requests']}"
-        
-        await self.bot.send_message(
-            chat_id=self.admin_chat_id,
-            text=report,
-            parse_mode="Markdown"
-        )
+        """Отправка ежедневного отчета админу"""
+        try:
+            # Формируем отчет
+            report = f"📊 **ЕЖЕДНЕВНЫЙ ОТЧЕТ**\n\n"
+            report += f"📅 Дата: {self.daily_stats['date'].strftime('%d.%m.%Y')}\n"
+            report += f"🤝 Предложений помощи: {self.daily_stats['help_offers']}\n"
+            report += f"🆘 Запросов помощи: {self.daily_stats['help_requests']}\n"
+            report += f"💰 Денежных переводов: {self.daily_stats['money_offers']}\n"
+            report += f"👥 Новых волонтеров: {self.daily_stats['volunteers']}\n"
+            
+            # Активные заявки
+            active = sum(1 for req in self.pending_requests.values() if not req.get('answered', False))
+            report += f"⏳ Активных заявок: {active}\n\n"
+            
+            # Сбрасываем статистику для нового дня
+            self.daily_stats = {
+                'date': datetime.now().date(),
+                'help_offers': 0,
+                'help_requests': 0,
+                'money_offers': 0,
+                'volunteers': 0
+            }
+            
+            await self.notify_admin(report)
+            
+        except Exception as e:
+            logging.error(f"Ошибка при отправке ежедневного отчета: {e}")
     
-    def reset_daily_stats(self):
-        """Сброс статистики на новый день"""
-        self.daily_stats = {
-            'date': datetime.now().date(),
-            'help_offers': 0,
-            'help_requests': 0,
-            'money_offers': 0,
-            'volunteers': 0
-        }
+    async def check_expired_requests(self):
+        """Проверка просроченных заявок (более 7 дней)"""
+        try:
+            expired = []
+            now = datetime.now()
+            
+            for req_id, req_data in self.pending_requests.items():
+                if not req_data.get('answered', False):
+                    created_at = req_data.get('created_at')
+                    if created_at and (now - created_at).days >= 7:
+                        expired.append(req_id)
+            
+            if expired:
+                await self.notify_admin(
+                    f"⚠️ **Просроченные заявки**\n"
+                    f"Найдено заявок старше 7 дней: {len(expired)}"
+                )
+                
+        except Exception as e:
+            logging.error(f"Ошибка при проверке просроченных заявок: {e}")
     
-    def add_request(self, req_id: int, user_name: str, phone: str, category: str, req_type: str):
-        """Добавление новой заявки в систему"""
-        self.pending_requests[req_id] = {
-            'user': user_name,
+    def add_request(self, request_id: int, user_name: str, phone: str, category: str, req_type: str):
+        """Добавление новой заявки"""
+        self.pending_requests[request_id] = {
+            'user_name': user_name,
             'phone': phone,
             'category': category,
             'type': req_type,
-            'timestamp': datetime.now(),
-            'answered': False,
-            'notified_12h': False,
-            'notified_24h': False
+            'created_at': datetime.now(),
+            'answered': False
         }
         
-        if req_type == 'help':
+        # Обновляем статистику
+        if req_type == 'money':
+            self.daily_stats['money_offers'] += 1
+        elif req_type == 'help':
             self.daily_stats['help_offers'] += 1
         elif req_type == 'request':
             self.daily_stats['help_requests'] += 1
-        elif req_type == 'money':
-            self.daily_stats['money_offers'] += 1
     
-    def mark_as_answered(self, req_id: int):
-        """Отметить заявку как отвеченную"""
-        if req_id in self.pending_requests:
-            self.pending_requests[req_id]['answered'] = True
+    def mark_as_answered(self, request_id: int):
+        """Отметить заявку как выполненную"""
+        if request_id in self.pending_requests:
+            self.pending_requests[request_id]['answered'] = True
+    
+    async def notify_admin(self, message: str):
+        """Отправка уведомления админу"""
+        try:
+            await self.bot.send_message(
+                chat_id=self.admin_id,
+                text=message,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logging.error(f"Ошибка при отправке уведомления админу: {e}")
