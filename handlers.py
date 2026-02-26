@@ -55,8 +55,21 @@ def get_username(user):
     return f"@{user.username}" if user.username else "не указан"
 
 def is_admin(user_id):
-    """Проверка, является ли пользователь администратором"""
-    return str(user_id) == str(config.ADMIN_CHAT_ID)
+    """Универсальная проверка, является ли пользователь администратором"""
+    admin_id = config.ADMIN_CHAT_ID
+    
+    # Пробуем сравнить как строки
+    if str(user_id) == str(admin_id):
+        return True
+    
+    # Пробуем сравнить как числа
+    try:
+        if int(user_id) == int(admin_id):
+            return True
+    except:
+        pass
+    
+    return False
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -75,10 +88,15 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.message(Command("myid"))
 async def show_my_id(message: Message):
+    """Показать ID пользователя и статус администратора"""
+    user_id = message.from_user.id
+    admin_status = is_admin(user_id)
+    
     await message.answer(
-        f"🆔 Ваш Telegram ID: `{message.from_user.id}`\n"
-        f"👤 Имя: {message.from_user.full_name}\n"
-        f"🔑 Статус: {'✅ Администратор' if is_admin(message.from_user.id) else '❌ Обычный пользователь'}",
+        f"🆔 *Ваш Telegram ID:* `{user_id}`\n"
+        f"👤 *Имя:* {message.from_user.full_name}\n"
+        f"🔑 *Статус:* {'✅ Администратор' if admin_status else '❌ Обычный пользователь'}\n"
+        f"📋 *ID админа в config:* `{config.ADMIN_CHAT_ID}` (тип: {type(config.ADMIN_CHAT_ID).__name__})",
         parse_mode="Markdown"
     )
 
