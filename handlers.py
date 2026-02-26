@@ -45,6 +45,9 @@ class VolunteerStates(StatesGroup):
     waiting_for_deed_phone = State()
     waiting_for_deed_photo = State()
 
+class Feedback(StatesGroup):
+    waiting_for_feedback = State()
+
 def generate_request_id():
     return random.randint(1000, 9999)
 
@@ -1088,6 +1091,126 @@ async def get_all_stats(message: Message, bot: Bot):
     text += f"🆘 Запросы помощи: {request_requests}\n"
     
     await message.answer(text)
+
+# ========== НОВЫЕ РАЗДЕЛЫ ==========
+
+@router.message(F.text == "🙏 Стена благодарности")
+async def gratitude_wall(message: Message):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute('''
+            SELECT g.deed_id, g.deed_type, g.description, g.created_at,
+                   u.full_name
+            FROM good_deeds g
+            JOIN users u ON g.user_id = u.user_id
+            WHERE g.status = 'verified'
+            ORDER BY g.verified_at DESC
+            LIMIT 20
+        ''')
+        deeds = await cursor.fetchall()
+    
+    if not deeds:
+        await message.answer("🙏 Пока нет благодарностей. Будьте первыми!")
+        return
+    
+    text = "🙏 *Стена благодарности*\n\n"
+    text += "Спасибо всем, кто помогает! 👇\n\n"
+    
+    for deed in deeds:
+        deed_id, deed_type, desc, date, name = deed
+        date_str = date[:10] if date else "недавно"
+        short_desc = desc[:50] + "..." if len(desc) > 50 else desc
+        text += f"• {name} помог: {short_desc} ({date_str})\n"
+    
+    await message.answer(text, parse_mode="Markdown")
+
+@router.message(F.text == "⭐ Оставить отзыв")
+async def leave_feedback(message: Message, state: FSMContext):
+    await message.answer(
+        "📝 Поделитесь своим мнением!\n\n"
+        "Расскажите, как вам помог наш проект?\n"
+        "Можете оставить благодарность, пожелания или предложения.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(Feedback.waiting_for_feedback)
+
+@router.message(Feedback.waiting_for_feedback)
+async def process_feedback(message: Message, state: FSMContext, bot: Bot):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    feedback = message.text
+    
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                username TEXT,
+                full_name TEXT,
+                feedback TEXT,
+                created_at TEXT
+            )
+        ''')
+        await db.execute('''
+            INSERT INTO feedback (user_id, username, full_name, feedback, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (
+            message.from_user.id,
+            message.from_user.username or "",
+            message.from_user.full_name,
+            feedback,
+            datetime.now().isoformat()
+        ))
+        await db.commit()
+    
+    await message.answer(
+        "✅ Спасибо за ваш отзыв!\n"
+        "Мы ценим ваше мнение и стараемся стать лучше.",
+        reply_markup=nav.get_main_keyboard()
+    )
+    
+    await notify_admin(
+        bot,
+        "⭐ Новый отзыв",
+        f"От: {message.from_user.full_name}\n"
+        f"🆔 Username: {get_username(message.from_user)}\n"
+        f"📝 Отзыв: {feedback}"
+    )
+    
+    await state.clear()
+
+@router.message(Command("feedback"))
+async def view_feedback(message: Message):
+    admin_id = config.ADMIN_CHAT_ID
+    
+    if message.from_user.id != admin_id:
+        return
+    
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute('''
+            SELECT full_name, username, feedback, created_at
+            FROM feedback
+            ORDER BY created_at DESC
+            LIMIT 20
+        ''')
+        feedbacks = await cursor.fetchall()
+    
+    if not feedbacks:
+        await message.answer("📝 Пока нет отзывов.")
+        return
+    
+    text = "📝 *Последние отзывы:*\n\n"
+    for fb in feedbacks:
+        name, username, feedback, date = fb
+        date_str = date[:10] if date else "неизвестно"
+        text += f"• {name} (@{username or 'нет'}): {feedback[:50]}... ({date_str})\n"
+    
+    await message.answer(text, parse_mode="Markdown")
 
 async def notify_admin(bot, title: str, text: str):
     admin_chat_id = config.ADMIN_CHAT_ID
