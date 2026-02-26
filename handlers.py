@@ -54,6 +54,10 @@ def generate_request_id():
 def get_username(user):
     return f"@{user.username}" if user.username else "не указан"
 
+def is_admin(user_id):
+    """Проверка, является ли пользователь администратором"""
+    return str(user_id) == str(config.ADMIN_CHAT_ID)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
@@ -67,6 +71,15 @@ async def cmd_start(message: Message, state: FSMContext):
         "Рекомендуйте неравнодушным! \n"
         "Добра Вам и мира🌟",
         reply_markup=nav.get_main_keyboard()
+    )
+
+@router.message(Command("myid"))
+async def show_my_id(message: Message):
+    await message.answer(
+        f"🆔 Ваш Telegram ID: `{message.from_user.id}`\n"
+        f"👤 Имя: {message.from_user.full_name}\n"
+        f"🔑 Статус: {'✅ Администратор' if is_admin(message.from_user.id) else '❌ Обычный пользователь'}",
+        parse_mode="Markdown"
     )
 
 @router.message(F.text == "🤝 Хочу помочь")
@@ -1020,9 +1033,7 @@ async def back_to_main(message: Message, state: FSMContext):
 
 @router.message(lambda message: message.text and message.text.startswith('/done_'))
 async def mark_as_done(message: Message, bot: Bot):
-    admin_id = config.ADMIN_CHAT_ID
-    
-    if message.from_user.id != admin_id:
+    if not is_admin(message.from_user.id):
         return
     
     try:
@@ -1038,9 +1049,7 @@ async def mark_as_done(message: Message, bot: Bot):
 
 @router.message(Command("stats"))
 async def get_stats(message: Message, bot: Bot):
-    admin_id = config.ADMIN_CHAT_ID
-    
-    if message.from_user.id != admin_id:
+    if not is_admin(message.from_user.id):
         return
     
     if not hasattr(bot, 'scheduler'):
@@ -1064,9 +1073,7 @@ async def get_stats(message: Message, bot: Bot):
 
 @router.message(Command("all_stats"))
 async def get_all_stats(message: Message, bot: Bot):
-    admin_id = config.ADMIN_CHAT_ID
-    
-    if message.from_user.id != admin_id:
+    if not is_admin(message.from_user.id):
         return
     
     if not hasattr(bot, 'scheduler'):
@@ -1092,7 +1099,31 @@ async def get_all_stats(message: Message, bot: Bot):
     
     await message.answer(text)
 
-# ========== НОВЫЕ РАЗДЕЛЫ ==========
+@router.message(Command("feedback"))
+async def view_feedback(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute('''
+            SELECT full_name, username, feedback, created_at
+            FROM feedback
+            ORDER BY created_at DESC
+            LIMIT 20
+        ''')
+        feedbacks = await cursor.fetchall()
+    
+    if not feedbacks:
+        await message.answer("📝 Пока нет отзывов.")
+        return
+    
+    text = "📝 *Последние отзывы:*\n\n"
+    for fb in feedbacks:
+        name, username, feedback, date = fb
+        date_str = date[:10] if date else "неизвестно"
+        text += f"• {name} (@{username or 'нет'}): {feedback[:50]}... ({date_str})\n"
+    
+    await message.answer(text, parse_mode="Markdown")
 
 @router.message(F.text == "🙏 Стена благодарности")
 async def gratitude_wall(message: Message):
@@ -1183,34 +1214,6 @@ async def process_feedback(message: Message, state: FSMContext, bot: Bot):
     )
     
     await state.clear()
-
-@router.message(Command("feedback"))
-async def view_feedback(message: Message):
-    admin_id = config.ADMIN_CHAT_ID
-    
-    if message.from_user.id != admin_id:
-        return
-    
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        cursor = await db.execute('''
-            SELECT full_name, username, feedback, created_at
-            FROM feedback
-            ORDER BY created_at DESC
-            LIMIT 20
-        ''')
-        feedbacks = await cursor.fetchall()
-    
-    if not feedbacks:
-        await message.answer("📝 Пока нет отзывов.")
-        return
-    
-    text = "📝 *Последние отзывы:*\n\n"
-    for fb in feedbacks:
-        name, username, feedback, date = fb
-        date_str = date[:10] if date else "неизвестно"
-        text += f"• {name} (@{username or 'нет'}): {feedback[:50]}... ({date_str})\n"
-    
-    await message.answer(text, parse_mode="Markdown")
 
 async def notify_admin(bot, title: str, text: str):
     admin_chat_id = config.ADMIN_CHAT_ID
