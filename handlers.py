@@ -553,7 +553,8 @@ async def process_deed_photo(message: Message, state: FSMContext, bot: Bot):
             f"📞 Телефон: {phone}\n"
             f"Тип: {deed_type}\n"
             f"Описание: {description}\n"
-            f"Баллы: {points}"
+            f"Баллы: {points}",
+            deed_id
         )
         
         await state.clear()
@@ -593,7 +594,8 @@ async def skip_deed_photo(message: Message, state: FSMContext, bot: Bot):
             f"📞 Телефон: {phone}\n"
             f"Тип: {deed_type}\n"
             f"Описание: {description}\n"
-            f"Баллы: {points}"
+            f"Баллы: {points}",
+            deed_id
         )
         
         await state.clear()
@@ -1065,6 +1067,50 @@ async def mark_as_done(message: Message, bot: Bot):
     except:
         await message.answer("❌ Неверный формат команды")
 
+# ========== НОВЫЕ КОМАНДЫ ДЛЯ ПОДТВЕРЖДЕНИЯ ДОБРЫХ ДЕЛ ==========
+
+@router.message(lambda message: message.text and message.text.startswith('/approve_'))
+async def approve_deed(message: Message, bot: Bot):
+    """Подтверждение доброго дела (только для админа)"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        deed_id = int(message.text.replace('/approve_', ''))
+        
+        # Подтверждаем дело в базе данных
+        success = await verify_deed(deed_id, message.from_user.id, approved=True)
+        
+        if success:
+            await message.answer(f"✅ Доброе дело #{deed_id} подтверждено! Баллы начислены.")
+            
+            # Здесь можно добавить уведомление пользователю
+        else:
+            await message.answer(f"❌ Дело #{deed_id} не найдено или уже обработано")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+@router.message(lambda message: message.text and message.text.startswith('/reject_'))
+async def reject_deed(message: Message, bot: Bot):
+    """Отклонение доброго дела (только для админа)"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        deed_id = int(message.text.replace('/reject_', ''))
+        
+        # Отклоняем дело в базе данных
+        success = await verify_deed(deed_id, message.from_user.id, approved=False)
+        
+        if success:
+            await message.answer(f"❌ Доброе дело #{deed_id} отклонено.")
+            
+            # Здесь можно добавить уведомление пользователю
+        else:
+            await message.answer(f"❌ Дело #{deed_id} не найдено или уже обработано")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
 @router.message(Command("stats"))
 async def get_stats(message: Message, bot: Bot):
     if not is_admin(message.from_user.id):
@@ -1233,8 +1279,14 @@ async def process_feedback(message: Message, state: FSMContext, bot: Bot):
     
     await state.clear()
 
-async def notify_admin(bot, title: str, text: str):
+async def notify_admin(bot, title: str, text: str, deed_id: int = None):
     admin_chat_id = config.ADMIN_CHAT_ID
+    
+    # Если есть ID дела, добавляем команды для подтверждения/отклонения
+    if deed_id:
+        text += f"\n\n✅ Команда для подтверждения: /approve_{deed_id}"
+        text += f"\n❌ Команда для отклонения: /reject_{deed_id}"
+    
     try:
         await bot.send_message(
             chat_id=admin_chat_id,
