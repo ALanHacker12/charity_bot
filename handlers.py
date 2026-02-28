@@ -748,7 +748,8 @@ async def offer_phone_handler(message: Message, state: FSMContext, bot: Bot):
                 message.from_user.full_name, 
                 phone, 
                 category, 
-                'money'
+                'money',
+                message.from_user.username or "не указан"
             )
         
         await state.clear()
@@ -825,7 +826,8 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
                 message.from_user.full_name, 
                 phone, 
                 category, 
-                'help'
+                'help',
+                message.from_user.username or "не указан"
             )
         
         await state.clear()
@@ -873,7 +875,8 @@ async def skip_photo(message: Message, state: FSMContext, bot: Bot):
                 message.from_user.full_name, 
                 phone, 
                 category, 
-                'help'
+                'help',
+                message.from_user.username or "не указан"
             )
         
         await state.clear()
@@ -1041,7 +1044,8 @@ async def request_phone_handler(message: Message, state: FSMContext, bot: Bot):
             message.from_user.full_name, 
             phone, 
             category, 
-            'request'
+            'request',
+            message.from_user.username or "не указан"
         )
     
     await state.clear()
@@ -1069,14 +1073,12 @@ async def mark_as_done(message: Message, bot: Bot):
 
 @router.message(lambda message: message.text and message.text.startswith('/approve_'))
 async def approve_deed(message: Message, bot: Bot):
-    """Подтверждение доброго дела (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
     try:
         deed_id = int(message.text.replace('/approve_', ''))
         
-        # Подтверждаем дело в базе данных
         success = await verify_deed(deed_id, message.from_user.id, approved=True)
         
         if success:
@@ -1088,14 +1090,12 @@ async def approve_deed(message: Message, bot: Bot):
 
 @router.message(lambda message: message.text and message.text.startswith('/reject_'))
 async def reject_deed(message: Message, bot: Bot):
-    """Отклонение доброго дела (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
     try:
         deed_id = int(message.text.replace('/reject_', ''))
         
-        # Отклоняем дело в базе данных
         success = await verify_deed(deed_id, message.from_user.id, approved=False)
         
         if success:
@@ -1105,24 +1105,20 @@ async def reject_deed(message: Message, bot: Bot):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
-# ========== НОВЫЕ АДМИН-КОМАНДЫ ==========
-
 @router.message(lambda message: message.text and message.text.startswith('/search_'))
 async def search_request(message: Message, bot: Bot):
-    """Поиск заявки по ID и повторная отправка админу (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
     try:
         request_id = int(message.text.replace('/search_', ''))
         
-        # Проверяем в планировщике
         if hasattr(bot, 'scheduler') and request_id in bot.scheduler.pending_requests:
             req_data = bot.scheduler.pending_requests[request_id]
             
-            # Формируем сообщение с данными заявки
             response = f"🔍 *ЗАЯВКА #{request_id}*\n\n"
             response += f"👤 ФИО: {req_data['user']}\n"
+            response += f"🆔 Username: @{req_data.get('username', 'не указан')}\n"
             response += f"📞 Телефон: {req_data['phone']}\n"
             response += f"📋 Категория: {req_data['category']}\n"
             response += f"⏰ Создана: {req_data['timestamp'].strftime('%d.%m.%Y %H:%M')}\n"
@@ -1136,9 +1132,7 @@ async def search_request(message: Message, bot: Bot):
             
             await message.answer(response, parse_mode="Markdown")
         else:
-            # Если нет в планировщике, ищем в базе данных
             async with aiosqlite.connect(DATABASE_PATH) as db:
-                # Ищем в таблице good_deeds
                 cursor = await db.execute('''
                     SELECT deed_id, deed_type, description, points, status, created_at
                     FROM good_deeds 
@@ -1169,7 +1163,6 @@ async def search_request(message: Message, bot: Bot):
 
 @router.message(Command("active"))
 async def show_active_requests(message: Message, bot: Bot):
-    """Показать все активные заявки (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
@@ -1185,13 +1178,98 @@ async def show_active_requests(message: Message, bot: Bot):
         return
     
     text = "📋 *АКТИВНЫЕ ЗАЯВКИ*\n\n"
-    for req_id, req_data in list(active.items())[:20]:  # Показываем первые 20
+    for req_id, req_data in list(active.items())[:20]:
         created = req_data['timestamp'].strftime('%d.%m %H:%M')
-        text += f"• #{req_id} - {req_data['category']} ({created})\n"
-        text += f"  👤 {req_data['user']}\n"
+        username = req_data.get('username', 'не указан')
+        text += f"• `#{req_id}` - {req_data['category']} ({created})\n"
+        text += f"  👤 {req_data['user']} (@{username})\n"
     
     text += f"\n📝 Всего активных: {len(active)}"
-    text += f"\n🔍 Для просмотра деталей: /search_ ID"
+    text += f"\n🔍 Для просмотра деталей: /search_`ID`"
+    
+    await message.answer(text, parse_mode="Markdown")
+
+@router.message(Command("appllist"))
+async def show_all_applications(message: Message, bot: Bot):
+    """Показать все заявки одним списком (только для админа)"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    if not hasattr(bot, 'scheduler'):
+        await message.answer("❌ Планировщик не инициализирован")
+        return
+    
+    all_requests = bot.scheduler.pending_requests
+    
+    if not all_requests:
+        await message.answer("📭 Нет заявок в системе")
+        return
+    
+    active = []
+    completed = []
+    
+    for req_id, req_data in all_requests.items():
+        if req_data.get('answered', False):
+            completed.append((req_id, req_data))
+        else:
+            active.append((req_id, req_data))
+    
+    active.sort(key=lambda x: x[1]['timestamp'], reverse=True)
+    completed.sort(key=lambda x: x[1]['timestamp'], reverse=True)
+    
+    text = "📋 *ПОЛНЫЙ СПИСОК ЗАЯВОК*\n\n"
+    
+    if active:
+        text += "🔴 *АКТИВНЫЕ ЗАЯВКИ:*\n"
+        for req_id, req_data in active[:15]:
+            created = req_data['timestamp'].strftime('%d.%m %H:%M')
+            username = req_data.get('username', 'не указан')
+            category = req_data['category']
+            
+            if len(category) > 20:
+                category = category[:18] + ".."
+            
+            text += f"• `#{req_id}` - {category}\n"
+            text += f"  👤 {req_data['user']} (@{username})\n"
+            text += f"  📞 {req_data['phone']} | ⏰ {created}\n"
+        
+        if len(active) > 15:
+            text += f"  ... и еще {len(active) - 15} активных\n"
+        text += "\n"
+    
+    if completed:
+        text += "✅ *ВЫПОЛНЕННЫЕ ЗАЯВКИ:*\n"
+        for req_id, req_data in completed[:10]:
+            created = req_data['timestamp'].strftime('%d.%m %H:%M')
+            username = req_data.get('username', 'не указан')
+            category = req_data['category']
+            
+            if len(category) > 25:
+                category = category[:23] + ".."
+            
+            text += f"• `#{req_id}` - {category} ✅\n"
+            text += f"  👤 {req_data['user']} (@{username})\n"
+    
+    text += f"\n📊 *ИТОГО:*\n"
+    text += f"🔴 Активных: {len(active)}\n"
+    text += f"✅ Выполненных: {len(completed)}\n"
+    text += f"📋 Всего заявок: {len(all_requests)}\n"
+    text += f"\n🔍 Для просмотра деталей: /search_`ID`"
+    
+    if len(text) > 4000:
+        text = "📋 *СПИСОК ЗАЯВОК (СОКРАЩЕННЫЙ)*\n\n"
+        text += f"🔴 Активных: {len(active)}\n"
+        text += f"✅ Выполненных: {len(completed)}\n"
+        text += f"📋 Всего: {len(all_requests)}\n\n"
+        text += "🔍 *Последние 10 активных:*\n"
+        
+        for req_id, req_data in active[:10]:
+            created = req_data['timestamp'].strftime('%d.%m %H:%M')
+            username = req_data.get('username', 'не указан')
+            text += f"• `#{req_id}` - {req_data['category']} ({created})\n"
+            text += f"  👤 @{username}\n"
+        
+        text += f"\n📝 Для полного списка используйте /active"
     
     await message.answer(text, parse_mode="Markdown")
 
@@ -1272,8 +1350,6 @@ async def view_feedback(message: Message):
         text += f"• {name} (@{username or 'нет'}): {feedback[:50]}... ({date_str})\n"
     
     await message.answer(text, parse_mode="Markdown")
-
-# ========== ОСНОВНЫЕ РАЗДЕЛЫ ==========
 
 @router.message(F.text == "🙏 Стена благодарности")
 async def gratitude_wall(message: Message):
@@ -1367,7 +1443,6 @@ async def process_feedback(message: Message, state: FSMContext, bot: Bot):
 
 @router.message(F.text == "🏅 Топ семей")
 async def show_family_leaderboard(message: Message):
-    """Показ топа семей"""
     try:
         families = await get_family_leaderboard(10)
         
@@ -1387,7 +1462,6 @@ async def show_family_leaderboard(message: Message):
 async def notify_admin(bot, title: str, text: str, deed_id: int = None):
     admin_chat_id = config.ADMIN_CHAT_ID
     
-    # Если есть ID дела, добавляем команды для подтверждения/отклонения
     if deed_id:
         text += f"\n\n✅ Команда для подтверждения: /approve_{deed_id}"
         text += f"\n❌ Команда для отклонения: /reject_{deed_id}"
