@@ -1067,8 +1067,6 @@ async def mark_as_done(message: Message, bot: Bot):
     except:
         await message.answer("❌ Неверный формат команды")
 
-# ========== НОВЫЕ КОМАНДЫ ДЛЯ ПОДТВЕРЖДЕНИЯ ДОБРЫХ ДЕЛ ==========
-
 @router.message(lambda message: message.text and message.text.startswith('/approve_'))
 async def approve_deed(message: Message, bot: Bot):
     """Подтверждение доброго дела (только для админа)"""
@@ -1083,8 +1081,6 @@ async def approve_deed(message: Message, bot: Bot):
         
         if success:
             await message.answer(f"✅ Доброе дело #{deed_id} подтверждено! Баллы начислены.")
-            
-            # Здесь можно добавить уведомление пользователю
         else:
             await message.answer(f"❌ Дело #{deed_id} не найдено или уже обработано")
     except Exception as e:
@@ -1104,12 +1100,100 @@ async def reject_deed(message: Message, bot: Bot):
         
         if success:
             await message.answer(f"❌ Доброе дело #{deed_id} отклонено.")
-            
-            # Здесь можно добавить уведомление пользователю
         else:
             await message.answer(f"❌ Дело #{deed_id} не найдено или уже обработано")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
+
+# ========== НОВЫЕ АДМИН-КОМАНДЫ ==========
+
+@router.message(lambda message: message.text and message.text.startswith('/search_'))
+async def search_request(message: Message, bot: Bot):
+    """Поиск заявки по ID и повторная отправка админу (только для админа)"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        request_id = int(message.text.replace('/search_', ''))
+        
+        # Проверяем в планировщике
+        if hasattr(bot, 'scheduler') and request_id in bot.scheduler.pending_requests:
+            req_data = bot.scheduler.pending_requests[request_id]
+            
+            # Формируем сообщение с данными заявки
+            response = f"🔍 *ЗАЯВКА #{request_id}*\n\n"
+            response += f"👤 ФИО: {req_data['user']}\n"
+            response += f"📞 Телефон: {req_data['phone']}\n"
+            response += f"📋 Категория: {req_data['category']}\n"
+            response += f"⏰ Создана: {req_data['timestamp'].strftime('%d.%m.%Y %H:%M')}\n"
+            response += f"✅ Статус: {'Выполнена' if req_data.get('answered', False) else 'В ожидании'}\n"
+            
+            if req_data.get('answered', False):
+                response += f"📅 Выполнена: да\n"
+            
+            response += f"\n📝 Команды:\n"
+            response += f"✅ /done_{request_id} - отметить выполненной"
+            
+            await message.answer(response, parse_mode="Markdown")
+        else:
+            # Если нет в планировщике, ищем в базе данных
+            async with aiosqlite.connect(DATABASE_PATH) as db:
+                # Ищем в таблице good_deeds
+                cursor = await db.execute('''
+                    SELECT deed_id, deed_type, description, points, status, created_at
+                    FROM good_deeds 
+                    WHERE deed_id = ?
+                ''', (request_id,))
+                deed = await cursor.fetchone()
+                
+                if deed:
+                    deed_id, deed_type, desc, points, status, created = deed
+                    response = f"🔍 *ДОБРОЕ ДЕЛО #{deed_id}*\n\n"
+                    response += f"📋 Тип: {deed_type}\n"
+                    response += f"📝 Описание: {desc}\n"
+                    response += f"🌟 Баллы: {points}\n"
+                    response += f"📊 Статус: {status}\n"
+                    response += f"⏰ Создано: {created[:16] if created else 'неизвестно'}\n"
+                    
+                    if status == 'pending':
+                        response += f"\n✅ /approve_{deed_id} - подтвердить"
+                        response += f"\n❌ /reject_{deed_id} - отклонить"
+                    
+                    await message.answer(response, parse_mode="Markdown")
+                else:
+                    await message.answer(f"❌ Заявка #{request_id} не найдена")
+    except ValueError:
+        await message.answer("❌ Неверный формат ID. Используйте: /search_1234")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+@router.message(Command("active"))
+async def show_active_requests(message: Message, bot: Bot):
+    """Показать все активные заявки (только для админа)"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    if not hasattr(bot, 'scheduler'):
+        await message.answer("❌ Планировщик не инициализирован")
+        return
+    
+    active = {req_id: req_data for req_id, req_data in bot.scheduler.pending_requests.items() 
+              if not req_data.get('answered', False)}
+    
+    if not active:
+        await message.answer("📭 Нет активных заявок")
+        return
+    
+    text = "📋 *АКТИВНЫЕ ЗАЯВКИ*\n\n"
+    for req_id, req_data in list(active.items())[:20]:  # Показываем первые 20
+        created = req_data['timestamp'].strftime('%d.%m %H:%M')
+        text += f"• #{req_id} - {req_data['category']} ({created})\n"
+        text += f"  👤 {req_data['user']}\n"
+    
+    text += f"\n📝 Всего активных: {len(active)}"
+    text += f"\n🔍 Для просмотра деталей: /search_ ID"
+    
+    await message.answer(text, parse_mode="Markdown")
 
 @router.message(Command("stats"))
 async def get_stats(message: Message, bot: Bot):
@@ -1188,6 +1272,8 @@ async def view_feedback(message: Message):
         text += f"• {name} (@{username or 'нет'}): {feedback[:50]}... ({date_str})\n"
     
     await message.answer(text, parse_mode="Markdown")
+
+# ========== ОСНОВНЫЕ РАЗДЕЛЫ ==========
 
 @router.message(F.text == "🙏 Стена благодарности")
 async def gratitude_wall(message: Message):
@@ -1278,6 +1364,25 @@ async def process_feedback(message: Message, state: FSMContext, bot: Bot):
     )
     
     await state.clear()
+
+@router.message(F.text == "🏅 Топ семей")
+async def show_family_leaderboard(message: Message):
+    """Показ топа семей"""
+    try:
+        families = await get_family_leaderboard(10)
+        
+        if not families:
+            await message.answer("🏅 Пока нет семей с баллами. Создайте свою семью!")
+            return
+        
+        text = "🏅 *Топ-10 семей*\n\n"
+        for i, (name, points) in enumerate(families, 1):
+            text += f"{i}. {name} — {points} 🌟\n"
+        
+        await message.answer(text, parse_mode="Markdown")
+    except Exception as e:
+        print(f"❌ Ошибка в топ семей: {e}")
+        await message.answer("Произошла ошибка. Попробуйте позже.")
 
 async def notify_admin(bot, title: str, text: str, deed_id: int = None):
     admin_chat_id = config.ADMIN_CHAT_ID
