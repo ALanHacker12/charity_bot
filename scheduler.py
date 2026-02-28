@@ -94,10 +94,11 @@ class NotificationScheduler:
             'volunteers': 0
         }
     
-    def add_request(self, req_id: int, user_name: str, phone: str, category: str, req_type: str):
+    def add_request(self, req_id: int, user_name: str, phone: str, category: str, req_type: str, username: str = "не указан"):
         """Добавление новой заявки в систему"""
         self.pending_requests[req_id] = {
             'user': user_name,
+            'username': username,  # Добавляем username
             'phone': phone,
             'category': category,
             'type': req_type,
@@ -107,6 +108,7 @@ class NotificationScheduler:
             'notified_24h': False
         }
         
+        # Обновляем статистику
         if req_type == 'help':
             self.daily_stats['help_offers'] += 1
         elif req_type == 'request':
