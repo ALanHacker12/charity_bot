@@ -18,7 +18,7 @@ router = Router()
 
 class HelpOffer(StatesGroup):
     waiting_for_category = State()
-    waiting_for_fullname = State()  # Новое состояние для ФИО
+    waiting_for_fullname = State()
     waiting_for_details = State()
     waiting_for_photo = State()
     waiting_for_phone = State()
@@ -26,7 +26,7 @@ class HelpOffer(StatesGroup):
 
 class HelpRequest(StatesGroup):
     waiting_for_category = State()
-    waiting_for_fullname = State()  # Новое состояние для ФИО
+    waiting_for_fullname = State()
     waiting_for_details = State()
     waiting_for_phone = State()
     waiting_for_city = State()
@@ -92,11 +92,10 @@ async def show_my_id(message: Message):
     admin_status = is_admin(user_id)
     
     await message.answer(
-        f"🆔 *Ваш Telegram ID:* `{user_id}`\n"
-        f"👤 *Имя:* {message.from_user.full_name}\n"
-        f"🔑 *Статус:* {'✅ Администратор' if admin_status else '❌ Обычный пользователь'}\n"
-        f"📋 *ID админа в config:* `{config.ADMIN_CHAT_ID}` (тип: {type(config.ADMIN_CHAT_ID).__name__})",
-        parse_mode="Markdown"
+        f"🆔 Ваш Telegram ID: {user_id}\n"
+        f"👤 Имя: {message.from_user.full_name}\n"
+        f"🔑 Статус: {'✅ Администратор' if admin_status else '❌ Обычный пользователь'}\n"
+        f"📋 ID админа в config: {config.ADMIN_CHAT_ID} (тип: {type(config.ADMIN_CHAT_ID).__name__})"
     )
 
 @router.message(F.text == "🤝 Хочу помочь")
@@ -603,8 +602,6 @@ async def skip_deed_photo(message: Message, state: FSMContext, bot: Bot):
         await message.answer("Произошла ошибка. Попробуйте позже.")
         await state.clear()
 
-# ========== НОВЫЕ ОБРАБОТЧИКИ С ЗАПРОСОМ ФИО ==========
-
 @router.message(F.text == "📦 Отправить продукцию")
 async def offer_product(message: Message, state: FSMContext):
     await state.update_data(offer_type="product", category="Отправка продукции")
@@ -940,8 +937,6 @@ async def skip_photo(message: Message, state: FSMContext, bot: Bot):
         await message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")
         await state.clear()
 
-# ========== ОБРАБОТЧИКИ ДЛЯ ЗАПРОСОВ ПОМОЩИ ==========
-
 @router.message(HelpRequest.waiting_for_category)
 async def request_category_handler(message: Message, state: FSMContext):
     category_map = {
@@ -1138,7 +1133,7 @@ async def back_to_main(message: Message, state: FSMContext):
     await state.clear()
     await cmd_start(message, state)
 
-# ========== АДМИН-КОМАНДЫ ==========
+# ========== АДМИН-КОМАНДЫ (исправленные, без Markdown) ==========
 
 @router.message(lambda message: message.text and message.text.startswith('/done_'))
 async def mark_as_done(message: Message, bot: Bot):
@@ -1192,6 +1187,7 @@ async def reject_deed(message: Message, bot: Bot):
 
 @router.message(lambda message: message.text and message.text.startswith('/search_'))
 async def search_request(message: Message, bot: Bot):
+    """Поиск заявки по ID и повторная отправка админу (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
@@ -1201,7 +1197,7 @@ async def search_request(message: Message, bot: Bot):
         if hasattr(bot, 'scheduler') and request_id in bot.scheduler.pending_requests:
             req_data = bot.scheduler.pending_requests[request_id]
             
-            response = f"🔍 *ЗАЯВКА #{request_id}*\n\n"
+            response = f"🔍 ЗАЯВКА #{request_id}\n\n"
             response += f"👤 ФИО: {req_data['user']}\n"
             response += f"🆔 Username: @{req_data.get('username', 'не указан')}\n"
             response += f"📞 Телефон: {req_data['phone']}\n"
@@ -1215,7 +1211,7 @@ async def search_request(message: Message, bot: Bot):
             response += f"\n📝 Команды:\n"
             response += f"✅ /done_{request_id} - отметить выполненной"
             
-            await message.answer(response, parse_mode="Markdown")
+            await message.answer(response)
         else:
             async with aiosqlite.connect(DATABASE_PATH) as db:
                 cursor = await db.execute('''
@@ -1227,7 +1223,7 @@ async def search_request(message: Message, bot: Bot):
                 
                 if deed:
                     deed_id, deed_type, desc, points, status, created = deed
-                    response = f"🔍 *ДОБРОЕ ДЕЛО #{deed_id}*\n\n"
+                    response = f"🔍 ДОБРОЕ ДЕЛО #{deed_id}\n\n"
                     response += f"📋 Тип: {deed_type}\n"
                     response += f"📝 Описание: {desc}\n"
                     response += f"🌟 Баллы: {points}\n"
@@ -1238,7 +1234,7 @@ async def search_request(message: Message, bot: Bot):
                         response += f"\n✅ /approve_{deed_id} - подтвердить"
                         response += f"\n❌ /reject_{deed_id} - отклонить"
                     
-                    await message.answer(response, parse_mode="Markdown")
+                    await message.answer(response)
                 else:
                     await message.answer(f"❌ Заявка #{request_id} не найдена")
     except ValueError:
@@ -1248,6 +1244,7 @@ async def search_request(message: Message, bot: Bot):
 
 @router.message(Command("active"))
 async def show_active_requests(message: Message, bot: Bot):
+    """Показать все активные заявки (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
@@ -1262,20 +1259,21 @@ async def show_active_requests(message: Message, bot: Bot):
         await message.answer("📭 Нет активных заявок")
         return
     
-    text = "📋 *АКТИВНЫЕ ЗАЯВКИ*\n\n"
+    text = "📋 АКТИВНЫЕ ЗАЯВКИ\n\n"
     for req_id, req_data in list(active.items())[:20]:
         created = req_data['timestamp'].strftime('%d.%m %H:%M')
         username = req_data.get('username', 'не указан')
-        text += f"• `#{req_id}` - {req_data['category']} ({created})\n"
+        text += f"• #{req_id} - {req_data['category']} ({created})\n"
         text += f"  👤 {req_data['user']} (@{username})\n"
     
     text += f"\n📝 Всего активных: {len(active)}"
-    text += f"\n🔍 Для просмотра деталей: /search_`ID`"
+    text += f"\n🔍 Для просмотра деталей: /search_ID"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 @router.message(Command("appllist"))
 async def show_all_applications(message: Message, bot: Bot):
+    """Показать все заявки одним списком (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
@@ -1301,10 +1299,10 @@ async def show_all_applications(message: Message, bot: Bot):
     active.sort(key=lambda x: x[1]['timestamp'], reverse=True)
     completed.sort(key=lambda x: x[1]['timestamp'], reverse=True)
     
-    text = "📋 *ПОЛНЫЙ СПИСОК ЗАЯВОК*\n\n"
+    text = "📋 ПОЛНЫЙ СПИСОК ЗАЯВОК\n\n"
     
     if active:
-        text += "🔴 *АКТИВНЫЕ ЗАЯВКИ:*\n"
+        text += "🔴 АКТИВНЫЕ ЗАЯВКИ:\n"
         for req_id, req_data in active[:15]:
             created = req_data['timestamp'].strftime('%d.%m %H:%M')
             username = req_data.get('username', 'не указан')
@@ -1313,7 +1311,7 @@ async def show_all_applications(message: Message, bot: Bot):
             if len(category) > 20:
                 category = category[:18] + ".."
             
-            text += f"• `#{req_id}` - {category}\n"
+            text += f"• #{req_id} - {category}\n"
             text += f"  👤 {req_data['user']} (@{username})\n"
             text += f"  📞 {req_data['phone']} | ⏰ {created}\n"
         
@@ -1322,40 +1320,39 @@ async def show_all_applications(message: Message, bot: Bot):
         text += "\n"
     
     if completed:
-        text += "✅ *ВЫПОЛНЕННЫЕ ЗАЯВКИ:*\n"
+        text += "✅ ВЫПОЛНЕННЫЕ ЗАЯВКИ:\n"
         for req_id, req_data in completed[:10]:
-            created = req_data['timestamp'].strftime('%d.%m %H:%M')
             username = req_data.get('username', 'не указан')
             category = req_data['category']
             
             if len(category) > 25:
                 category = category[:23] + ".."
             
-            text += f"• `#{req_id}` - {category} ✅\n"
+            text += f"• #{req_id} - {category} ✅\n"
             text += f"  👤 {req_data['user']} (@{username})\n"
     
-    text += f"\n📊 *ИТОГО:*\n"
+    text += f"\n📊 ИТОГО:\n"
     text += f"🔴 Активных: {len(active)}\n"
     text += f"✅ Выполненных: {len(completed)}\n"
     text += f"📋 Всего заявок: {len(all_requests)}\n"
-    text += f"\n🔍 Для просмотра деталей: /search_`ID`"
+    text += f"\n🔍 Для просмотра деталей: /search_ID"
     
     if len(text) > 4000:
-        text = "📋 *СПИСОК ЗАЯВОК (СОКРАЩЕННЫЙ)*\n\n"
+        text = "📋 СПИСОК ЗАЯВОК (СОКРАЩЕННЫЙ)\n\n"
         text += f"🔴 Активных: {len(active)}\n"
         text += f"✅ Выполненных: {len(completed)}\n"
         text += f"📋 Всего: {len(all_requests)}\n\n"
-        text += "🔍 *Последние 10 активных:*\n"
+        text += "🔍 Последние 10 активных:\n"
         
         for req_id, req_data in active[:10]:
             created = req_data['timestamp'].strftime('%d.%m %H:%M')
             username = req_data.get('username', 'не указан')
-            text += f"• `#{req_id}` - {req_data['category']} ({created})\n"
+            text += f"• #{req_id} - {req_data['category']} ({created})\n"
             text += f"  👤 @{username}\n"
         
         text += f"\n📝 Для полного списка используйте /active"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 @router.message(Command("stats"))
 async def get_stats(message: Message, bot: Bot):
@@ -1427,13 +1424,13 @@ async def view_feedback(message: Message):
         await message.answer("📝 Пока нет отзывов.")
         return
     
-    text = "📝 *Последние отзывы:*\n\n"
+    text = "📝 Последние отзывы:\n\n"
     for fb in feedbacks:
         name, username, feedback, date = fb
         date_str = date[:10] if date else "неизвестно"
         text += f"• {name} (@{username or 'нет'}): {feedback[:50]}... ({date_str})\n"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 # ========== ОСНОВНЫЕ РАЗДЕЛЫ ==========
 
@@ -1455,7 +1452,7 @@ async def gratitude_wall(message: Message):
         await message.answer("🙏 Пока нет благодарностей. Будьте первыми!")
         return
     
-    text = "🙏 *Стена благодарности*\n\n"
+    text = "🙏 Стена благодарности\n\n"
     text += "Спасибо всем, кто помогает! 👇\n\n"
     
     for deed in deeds:
@@ -1464,7 +1461,7 @@ async def gratitude_wall(message: Message):
         short_desc = desc[:50] + "..." if len(desc) > 50 else desc
         text += f"• {name} помог: {short_desc} ({date_str})\n"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 @router.message(F.text == "⭐ Оставить отзыв")
 async def leave_feedback(message: Message, state: FSMContext):
@@ -1536,11 +1533,11 @@ async def show_family_leaderboard(message: Message):
             await message.answer("🏅 Пока нет семей с баллами. Создайте свою семью!")
             return
         
-        text = "🏅 *Топ-10 семей*\n\n"
+        text = "🏅 Топ-10 семей\n\n"
         for i, (name, points) in enumerate(families, 1):
             text += f"{i}. {name} — {points} 🌟\n"
         
-        await message.answer(text, parse_mode="Markdown")
+        await message.answer(text)
     except Exception as e:
         print(f"❌ Ошибка в топ семей: {e}")
         await message.answer("Произошла ошибка. Попробуйте позже.")
