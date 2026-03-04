@@ -3,7 +3,7 @@ import logging
 import os
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from database import init_db, create_feedback_table
+from database import init_db  # Убрали create_feedback_table
 from handlers import router
 import config
 from scheduler import NotificationScheduler
@@ -17,7 +17,7 @@ logging.basicConfig(
 async def on_startup(bot: Bot):
     """Действия при запуске бота"""
     logging.info("Инициализация базы данных...")
-    await init_db()
+    await init_db()  # Здесь уже создаются все таблицы, включая feedback
     logging.info("База данных готова")
     
     # Создаем и запускаем планировщик
