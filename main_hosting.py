@@ -3,7 +3,7 @@ import logging
 import os
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from database import init_db
+from database import init_db, create_feedback_table
 from handlers import router
 import config
 from scheduler import NotificationScheduler
