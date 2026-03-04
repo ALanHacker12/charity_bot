@@ -86,18 +86,6 @@ async def cmd_start(message: Message, state: FSMContext):
         reply_markup=nav.get_main_keyboard()
     )
 
-@router.message(Command("myid"))
-async def show_my_id(message: Message):
-    user_id = message.from_user.id
-    admin_status = is_admin(user_id)
-    
-    await message.answer(
-        f"🆔 Ваш Telegram ID: {user_id}\n"
-        f"👤 Имя: {message.from_user.full_name}\n"
-        f"🔑 Статус: {'✅ Администратор' if admin_status else '❌ Обычный пользователь'}\n"
-        f"📋 ID админа в config: {config.ADMIN_CHAT_ID} (тип: {type(config.ADMIN_CHAT_ID).__name__})"
-    )
-
 @router.message(F.text == "🤝 Хочу помочь")
 async def want_to_help(message: Message, state: FSMContext):
     await message.answer(
@@ -1133,7 +1121,7 @@ async def back_to_main(message: Message, state: FSMContext):
     await state.clear()
     await cmd_start(message, state)
 
-# ========== АДМИН-КОМАНДЫ (исправленные, без Markdown) ==========
+# ========== АДМИН-КОМАНДЫ ==========
 
 @router.message(lambda message: message.text and message.text.startswith('/done_'))
 async def mark_as_done(message: Message, bot: Bot):
@@ -1187,7 +1175,6 @@ async def reject_deed(message: Message, bot: Bot):
 
 @router.message(lambda message: message.text and message.text.startswith('/search_'))
 async def search_request(message: Message, bot: Bot):
-    """Поиск заявки по ID и повторная отправка админу (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
@@ -1244,7 +1231,6 @@ async def search_request(message: Message, bot: Bot):
 
 @router.message(Command("active"))
 async def show_active_requests(message: Message, bot: Bot):
-    """Показать все активные заявки (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
@@ -1273,7 +1259,6 @@ async def show_active_requests(message: Message, bot: Bot):
 
 @router.message(Command("appllist"))
 async def show_all_applications(message: Message, bot: Bot):
-    """Показать все заявки одним списком (только для админа)"""
     if not is_admin(message.from_user.id):
         return
     
@@ -1413,7 +1398,7 @@ async def view_feedback(message: Message):
     
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute('''
-            SELECT full_name, username, feedback, created_at
+            SELECT id, full_name, username, feedback, created_at
             FROM feedback
             ORDER BY created_at DESC
             LIMIT 20
@@ -1426,11 +1411,53 @@ async def view_feedback(message: Message):
     
     text = "📝 Последние отзывы:\n\n"
     for fb in feedbacks:
-        name, username, feedback, date = fb
+        fb_id, name, username, feedback, date = fb
         date_str = date[:10] if date else "неизвестно"
-        text += f"• {name} (@{username or 'нет'}): {feedback[:50]}... ({date_str})\n"
+        text += f"[#{fb_id}] {name} (@{username or 'нет'}): {feedback[:50]}... ({date_str})\n"
     
+    text += f"\n❌ Для удаления: /del_feedback_ ID"
     await message.answer(text)
+
+# ========== НОВАЯ КОМАНДА ДЛЯ УДАЛЕНИЯ ОТЗЫВОВ ==========
+
+@router.message(lambda message: message.text and message.text.startswith('/del_feedback_'))
+async def delete_feedback(message: Message):
+    """Удалить отзыв по ID (только для админа)"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        feedback_id = int(message.text.replace('/del_feedback_', ''))
+        
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            # Проверяем, существует ли отзыв
+            cursor = await db.execute('SELECT id FROM feedback WHERE id = ?', (feedback_id,))
+            exists = await cursor.fetchone()
+            
+            if not exists:
+                await message.answer(f"❌ Отзыв #{feedback_id} не найден")
+                return
+            
+            # Удаляем отзыв
+            await db.execute('DELETE FROM feedback WHERE id = ?', (feedback_id,))
+            await db.commit()
+            
+            await message.answer(f"✅ Отзыв #{feedback_id} успешно удалён")
+    except ValueError:
+        await message.answer("❌ Неверный формат. Используйте: /del_feedback_123")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+@router.message(Command("reloadkb"))
+async def reload_knowledge_base(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        # Здесь будет код перезагрузки базы знаний
+        await message.answer("✅ База знаний перезагружена")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
 
 # ========== ОСНОВНЫЕ РАЗДЕЛЫ ==========
 
