@@ -9,7 +9,7 @@ import os
 import aiosqlite
 import config
 import keyboards as nav
-from database import DATABASE_PATH, register_user, get_user_stats, create_family, get_leaderboard, get_family_leaderboard, get_points_history, add_good_deed, verify_deed
+from database import DATABASE_PATH, register_user, get_user_stats, create_family, get_leaderboard, get_family_leaderboard, get_points_history, add_good_deed, verify_deed, add_feedback, get_feedback
 from scheduler import NotificationScheduler
 import random
 from datetime import datetime
@@ -1396,14 +1396,7 @@ async def view_feedback(message: Message):
     if not is_admin(message.from_user.id):
         return
     
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        cursor = await db.execute('''
-            SELECT id, full_name, username, feedback, created_at
-            FROM feedback
-            ORDER BY created_at DESC
-            LIMIT 20
-        ''')
-        feedbacks = await cursor.fetchall()
+    feedbacks = await get_feedback(20)
     
     if not feedbacks:
         await message.answer("📝 Пока нет отзывов.")
@@ -1418,8 +1411,6 @@ async def view_feedback(message: Message):
     text += f"\n❌ Для удаления: /del_feedback_ ID"
     await message.answer(text)
 
-# ========== НОВАЯ КОМАНДА ДЛЯ УДАЛЕНИЯ ОТЗЫВОВ ==========
-
 @router.message(lambda message: message.text and message.text.startswith('/del_feedback_'))
 async def delete_feedback(message: Message):
     """Удалить отзыв по ID (только для админа)"""
@@ -1430,7 +1421,6 @@ async def delete_feedback(message: Message):
         feedback_id = int(message.text.replace('/del_feedback_', ''))
         
         async with aiosqlite.connect(DATABASE_PATH) as db:
-            # Проверяем, существует ли отзыв
             cursor = await db.execute('SELECT id FROM feedback WHERE id = ?', (feedback_id,))
             exists = await cursor.fetchone()
             
@@ -1438,7 +1428,6 @@ async def delete_feedback(message: Message):
                 await message.answer(f"❌ Отзыв #{feedback_id} не найден")
                 return
             
-            # Удаляем отзыв
             await db.execute('DELETE FROM feedback WHERE id = ?', (feedback_id,))
             await db.commit()
             
@@ -1454,7 +1443,6 @@ async def reload_knowledge_base(message: Message):
         return
     
     try:
-        # Здесь будет код перезагрузки базы знаний
         await message.answer("✅ База знаний перезагружена")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
@@ -1512,28 +1500,12 @@ async def process_feedback(message: Message, state: FSMContext, bot: Bot):
     
     feedback = message.text
     
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS feedback (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                username TEXT,
-                full_name TEXT,
-                feedback TEXT,
-                created_at TEXT
-            )
-        ''')
-        await db.execute('''
-            INSERT INTO feedback (user_id, username, full_name, feedback, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (
-            message.from_user.id,
-            message.from_user.username or "",
-            message.from_user.full_name,
-            feedback,
-            datetime.now().isoformat()
-        ))
-        await db.commit()
+    await add_feedback(
+        message.from_user.id,
+        message.from_user.username or "",
+        message.from_user.full_name,
+        feedback
+    )
     
     await message.answer(
         "✅ Спасибо за ваш отзыв!\n"
