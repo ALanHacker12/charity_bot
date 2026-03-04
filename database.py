@@ -67,7 +67,20 @@ async def init_db():
             )
         ''')
         
+        # Таблица для отзывов
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                username TEXT,
+                full_name TEXT,
+                feedback TEXT,
+                created_at TEXT
+            )
+        ''')
+        
         await db.commit()
+        print("✅ Все таблицы успешно созданы или уже существуют")
 
 async def register_user(user_id: int, username: str, full_name: str, age: int):
     """Регистрация нового пользователя"""
@@ -163,7 +176,6 @@ async def add_good_deed(user_id: int, deed_type: str, description: str, points: 
 async def verify_deed(deed_id: int, verified_by: int, approved: bool = True):
     """Подтверждение или отклонение доброго дела"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        # Получаем информацию о деле
         cursor = await db.execute('SELECT user_id, points, family_id FROM good_deeds WHERE deed_id = ?', (deed_id,))
         deed = await cursor.fetchone()
         
@@ -173,33 +185,28 @@ async def verify_deed(deed_id: int, verified_by: int, approved: bool = True):
         user_id, points, family_id = deed
         
         if approved:
-            # Подтверждаем дело
             await db.execute('''
                 UPDATE good_deeds 
                 SET status = 'verified', verified_at = ?, verified_by = ?
                 WHERE deed_id = ?
             ''', (datetime.now().isoformat(), verified_by, deed_id))
             
-            # Начисляем баллы пользователю
             await db.execute('''
                 UPDATE users SET total_points = total_points + ?, help_count = help_count + 1
                 WHERE user_id = ?
             ''', (points, user_id))
             
-            # Добавляем в историю
             await db.execute('''
                 INSERT INTO points_history (user_id, points, reason, created_at)
                 VALUES (?, ?, ?, ?)
             ''', (user_id, points, f"Доброе дело #{deed_id}", datetime.now().isoformat()))
             
-            # Если есть семья, начисляем баллы и семье
             if family_id:
                 await db.execute('''
                     UPDATE families SET total_points = total_points + ?
                     WHERE family_id = ?
                 ''', (points, family_id))
         else:
-            # Отклоняем дело
             await db.execute('''
                 UPDATE good_deeds 
                 SET status = 'rejected', verified_at = ?, verified_by = ?
@@ -244,3 +251,30 @@ async def get_points_history(user_id: int, days: int = 30):
             ORDER BY created_at DESC
         ''', (user_id, cutoff))
         return await cursor.fetchall()
+
+async def add_feedback(user_id: int, username: str, full_name: str, feedback: str):
+    """Добавление отзыва в базу данных"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute('''
+            INSERT INTO feedback (user_id, username, full_name, feedback, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, username, full_name, feedback, datetime.now().isoformat()))
+        await db.commit()
+
+async def get_feedback(limit: int = 20):
+    """Получение последних отзывов"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute('''
+            SELECT id, full_name, username, feedback, created_at
+            FROM feedback
+            ORDER BY created_at DESC
+            LIMIT ?
+        ''', (limit,))
+        return await cursor.fetchall()
+
+async def delete_feedback(feedback_id: int):
+    """Удаление отзыва по ID"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute('DELETE FROM feedback WHERE id = ?', (feedback_id,))
+        await db.commit()
+        return True
