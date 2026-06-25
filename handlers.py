@@ -173,6 +173,28 @@ async def show_volunteer_menu(message: Message):
 
 @router.message(F.text == "🤝 Стать волонтером")
 async def start_volunteer(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    
+    # ПРОВЕРКА: есть ли уже такой пользователь в базе?
+    stats = await get_user_stats(user_id)
+    
+    if stats:
+        # Если есть — показываем его данные и не даём создать дубль
+        total_points, help_count, username, full_name, age, is_adult, reg_date = stats
+        
+        await message.answer(
+            f"👋 Вы **уже зарегистрированы** в волонтерской программе!\n\n"
+            f"📊 Ваши данные:\n"
+            f"👤 Имя: {full_name}\n"
+            f"🎂 Возраст: {age} лет\n"
+            f"🌟 Баллов: {total_points}\n"
+            f"🤝 Добрых дел: {help_count}\n\n"
+            f"Используйте кнопки меню, чтобы управлять своей деятельностью.",
+            reply_markup=nav.get_volunteer_keyboard()
+        )
+        return  # Выходим из функции, чтобы не спрашивать возраст
+
+    # Если пользователя НЕТ — запускаем процесс регистрации
     await message.answer(
         "🌟 Добро пожаловать в волонтерскую программу!\n\n"
         "Здесь мы объединяем поколения: старшее поколение (55+) и подростков (10-16 лет) "
@@ -589,6 +611,56 @@ async def skip_deed_photo(message: Message, state: FSMContext, bot: Bot):
         print(f"❌ Ошибка в skip_deed_photo: {e}")
         await message.answer("Произошла ошибка. Попробуйте позже.")
         await state.clear()
+
+# ========== МОИ ПЕРЕДАЧИ ==========
+@router.message(F.text == "📦 Мои передачи")
+async def my_transfers(message: Message):
+    user_id = message.from_user.id
+
+    # Проверяем, зарегистрирован ли пользователь
+    stats = await get_user_stats(user_id)
+    if not stats:
+        await message.answer("❌ Сначала зарегистрируйтесь в волонтерском разделе!")
+        return
+
+    # Подключаемся к базе и ищем все ДОБРЫЕ ДЕЛА этого пользователя
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            """
+            SELECT deed_type, description, points, status, created_at
+            FROM good_deeds
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT 20
+            """,
+            (user_id,),
+        )
+        deeds = await cursor.fetchall()
+
+    # Если дел нет — говорим об этом
+    if not deeds:
+        await message.answer(
+            "📦 У вас пока нет записей о переданной помощи.\n"
+            "Добавьте доброе дело через кнопку '📝 Добавить доброе дело'."
+        )
+        return
+
+    # Формируем красивый ответ
+    text = "📦 **Мои передачи (добрые дела):**\n\n"
+    for deed in deeds:
+        deed_type, description, points, status, created_at = deed
+        # Превращаем статус в понятный текст
+        status_emoji = "⏳" if status == "pending" else "✅" if status == "verified" else "❌"
+        status_text = "На проверке" if status == "pending" else "Подтверждено" if status == "verified" else "Отклонено"
+
+        # Обрезаем длинное описание
+        short_desc = description[:40] + "..." if len(description) > 40 else description
+
+        text += f"{status_emoji} **{deed_type}** — {short_desc}\n"
+        text += f"   🏷️ Статус: {status_text} | 🌟 {points} баллов\n"
+        text += f"   🕒 {created_at[:10]}\n\n"
+
+    await message.answer(text)
 
 @router.message(F.text == "📦 Отправить продукцию")
 async def offer_product(message: Message, state: FSMContext):
