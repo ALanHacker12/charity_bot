@@ -16,6 +16,8 @@ from datetime import datetime
 
 router = Router()
 
+# ============ СОСТОЯНИЯ ============
+
 class HelpOffer(StatesGroup):
     waiting_for_category = State()
     waiting_for_fullname = State()
@@ -23,6 +25,11 @@ class HelpOffer(StatesGroup):
     waiting_for_photo = State()
     waiting_for_phone = State()
     waiting_for_city = State()
+    # НОВЫЕ ПОЛЯ ДЛЯ БЕЗОПАСНОСТИ
+    waiting_for_call_sign = State()      # Позывной
+    waiting_for_unit = State()           # Подразделение/часть
+    waiting_for_commander_contact = State()  # Контакт командира
+    waiting_for_organization = State()   # Организация (для предложений)
 
 class HelpRequest(StatesGroup):
     waiting_for_category = State()
@@ -30,6 +37,10 @@ class HelpRequest(StatesGroup):
     waiting_for_details = State()
     waiting_for_phone = State()
     waiting_for_city = State()
+    # НОВЫЕ ПОЛЯ ДЛЯ БЕЗОПАСНОСТИ
+    waiting_for_call_sign = State()      # Позывной (обязательно)
+    waiting_for_unit = State()           # Подразделение/часть (обязательно)
+    waiting_for_commander_contact = State()  # Контакт командира (опционально)
 
 class PsychHelp(StatesGroup):
     waiting_for_type = State()
@@ -49,6 +60,8 @@ class VolunteerStates(StatesGroup):
 
 class Feedback(StatesGroup):
     waiting_for_feedback = State()
+
+# ============ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ============
 
 def generate_request_id():
     return random.randint(1000, 9999)
@@ -70,6 +83,16 @@ def is_admin(user_id):
         pass
     
     return False
+
+def is_verified_request(data: dict) -> bool:
+    """Проверка, что заявка содержит все обязательные поля для верификации"""
+    required_fields = ['call_sign', 'unit']
+    for field in required_fields:
+        if not data.get(field) or data.get(field).strip() == '':
+            return False
+    return True
+
+# ============ ОСНОВНЫЕ КОМАНДЫ ============
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -96,6 +119,8 @@ async def want_to_help(message: Message, state: FSMContext):
 @router.message(F.text == "🆘 ЗАПРОС ПОДДЕРЖКИ (нужна помощь)")
 async def need_help(message: Message, state: FSMContext):
     await message.answer(
+        "⚠️ Внимание! Для безопасности все заявки проходят проверку.\n"
+        "Пожалуйста, заполните все поля честно и полностью.\n\n"
         "Выберите, какая помощь вам нужна:",
         reply_markup=nav.get_request_categories()
     )
@@ -171,15 +196,15 @@ async def show_volunteer_menu(message: Message):
             reply_markup=nav.get_volunteer_keyboard()
         )
 
+# ============ ВОЛОНТЕРСТВО ============
+
 @router.message(F.text == "🤝 Стать волонтером")
 async def start_volunteer(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
-    # ПРОВЕРКА: есть ли уже такой пользователь в базе?
     stats = await get_user_stats(user_id)
     
     if stats:
-        # Если есть — показываем его данные и не даём создать дубль
         total_points, help_count, username, full_name, age, is_adult, reg_date = stats
         
         await message.answer(
@@ -192,9 +217,8 @@ async def start_volunteer(message: Message, state: FSMContext):
             f"Используйте кнопки меню, чтобы управлять своей деятельностью.",
             reply_markup=nav.get_volunteer_keyboard()
         )
-        return  # Выходим из функции, чтобы не спрашивать возраст
+        return
 
-    # Если пользователя НЕТ — запускаем процесс регистрации
     await message.answer(
         "🌟 Добро пожаловать в волонтерскую программу!\n\n"
         "Здесь мы объединяем поколения: старшее поколение (55+) и подростков (10-16 лет) "
@@ -617,13 +641,11 @@ async def skip_deed_photo(message: Message, state: FSMContext, bot: Bot):
 async def my_transfers(message: Message):
     user_id = message.from_user.id
 
-    # Проверяем, зарегистрирован ли пользователь
     stats = await get_user_stats(user_id)
     if not stats:
         await message.answer("❌ Сначала зарегистрируйтесь в волонтерском разделе!")
         return
 
-    # Подключаемся к базе и ищем все ДОБРЫЕ ДЕЛА этого пользователя
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute(
             """
@@ -637,7 +659,6 @@ async def my_transfers(message: Message):
         )
         deeds = await cursor.fetchall()
 
-    # Если дел нет — говорим об этом
     if not deeds:
         await message.answer(
             "📦 У вас пока нет записей о переданной помощи.\n"
@@ -645,15 +666,12 @@ async def my_transfers(message: Message):
         )
         return
 
-    # Формируем красивый ответ
     text = "📦 **Мои передачи (добрые дела):**\n\n"
     for deed in deeds:
         deed_type, description, points, status, created_at = deed
-        # Превращаем статус в понятный текст
         status_emoji = "⏳" if status == "pending" else "✅" if status == "verified" else "❌"
         status_text = "На проверке" if status == "pending" else "Подтверждено" if status == "verified" else "Отклонено"
 
-        # Обрезаем длинное описание
         short_desc = description[:40] + "..." if len(description) > 40 else description
 
         text += f"{status_emoji} **{deed_type}** — {short_desc}\n"
@@ -661,6 +679,8 @@ async def my_transfers(message: Message):
         text += f"   🕒 {created_at[:10]}\n\n"
 
     await message.answer(text)
+
+# ============ ПОМОЩЬ (ОБНОВЛЕННАЯ С ВЕРИФИКАЦИЕЙ) ============
 
 @router.message(F.text == "📦 Отправить продукцию")
 async def offer_product(message: Message, state: FSMContext):
@@ -740,6 +760,8 @@ async def offer_other(message: Message, state: FSMContext):
     )
     await state.set_state(HelpOffer.waiting_for_fullname)
 
+# ============ ОБРАБОТКА ПРЕДЛОЖЕНИЙ (ОБНОВЛЕННАЯ) ============
+
 @router.message(HelpOffer.waiting_for_fullname)
 async def offer_fullname_handler(message: Message, state: FSMContext):
     if message.text == "← Назад в главное меню":
@@ -750,6 +772,47 @@ async def offer_fullname_handler(message: Message, state: FSMContext):
     fullname = message.text.strip()
     await state.update_data(fullname=fullname)
     
+    # НОВЫЙ ЭТАП: Запрашиваем позывной (для идентификации)
+    await message.answer(
+        "🎖️ Введите ваш **позывной** (или укажите, что вы не боец):\n"
+        "(например, 'Беркут' или 'Я волонтер')",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpOffer.waiting_for_call_sign)
+
+@router.message(HelpOffer.waiting_for_call_sign)
+async def offer_call_sign_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    await state.update_data(call_sign=message.text.strip())
+    
+    # НОВЫЙ ЭТАП: Организация (для волонтеров)
+    await message.answer(
+        "🏛️ Укажите вашу **организацию** (если вы представляете группу волонтеров):\n"
+        "(можно написать 'Частное лицо')",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpOffer.waiting_for_organization)
+
+@router.message(HelpOffer.waiting_for_organization)
+async def offer_organization_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    await state.update_data(organization=message.text.strip())
+    
+    # Переходим к описанию
     category = (await state.get_data()).get('category', '')
     
     if category == "Денежная помощь":
@@ -825,6 +888,8 @@ async def offer_phone_handler(message: Message, state: FSMContext, bot: Bot):
     category = user_data.get('category', 'Помощь')
     details = user_data.get('details', '')
     city = user_data.get('city', 'Не указан')
+    call_sign = user_data.get('call_sign', 'Не указан')
+    organization = user_data.get('organization', 'Не указана')
     
     request_id = generate_request_id()
     
@@ -842,6 +907,8 @@ async def offer_phone_handler(message: Message, state: FSMContext, bot: Bot):
             text=(
                 f"💰 НОВАЯ ЗАЯВКА #{request_id}\n\n"
                 f"👤 ФИО: {fullname}\n"
+                f"🎖️ Позывной: {call_sign}\n"
+                f"🏛️ Организация: {organization}\n"
                 f"🆔 Username: {get_username(message.from_user)}\n"
                 f"🏙️ Город: {city}\n"
                 f"📞 Телефон: {phone}\n"
@@ -902,11 +969,15 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
         details = user_data.get('details', '')
         phone = user_data.get('phone', 'Не указан')
         city = user_data.get('city', 'Не указан')
+        call_sign = user_data.get('call_sign', 'Не указан')
+        organization = user_data.get('organization', 'Не указана')
         request_id = user_data.get('request_id', generate_request_id())
         
         await message.answer(
             f"✅ Спасибо! Ваше предложение принято!\n\n"
             f"👤 ФИО: {fullname}\n"
+            f"🎖️ Позывной: {call_sign}\n"
+            f"🏛️ Организация: {organization}\n"
             f"📋 Категория: {category}\n"
             f"📝 Описание: {details}\n"
             f"🏙️ Город: {city}\n"
@@ -920,6 +991,8 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
         caption = (
             f"🔔 НОВАЯ ЗАЯВКА #{request_id}\n\n"
             f"👤 ФИО: {fullname}\n"
+            f"🎖️ Позывной: {call_sign}\n"
+            f"🏛️ Организация: {organization}\n"
             f"🆔 Username: {get_username(message.from_user)}\n"
             f"🏙️ Город: {city}\n"
             f"📞 Телефон: {phone}\n"
@@ -955,11 +1028,15 @@ async def skip_photo(message: Message, state: FSMContext, bot: Bot):
         details = user_data.get('details', '')
         phone = user_data.get('phone', 'Не указан')
         city = user_data.get('city', 'Не указан')
+        call_sign = user_data.get('call_sign', 'Не указан')
+        organization = user_data.get('organization', 'Не указана')
         request_id = user_data.get('request_id', generate_request_id())
         
         await message.answer(
             f"✅ Спасибо! Ваше предложение принято!\n\n"
             f"👤 ФИО: {fullname}\n"
+            f"🎖️ Позывной: {call_sign}\n"
+            f"🏛️ Организация: {organization}\n"
             f"📋 Категория: {category}\n"
             f"📝 Описание: {details}\n"
             f"🏙️ Город: {city}\n"
@@ -973,6 +1050,8 @@ async def skip_photo(message: Message, state: FSMContext, bot: Bot):
             bot,
             f"🤝 НОВАЯ ЗАЯВКА #{request_id}",
             f"👤 ФИО: {fullname}\n"
+            f"🎖️ Позывной: {call_sign}\n"
+            f"🏛️ Организация: {organization}\n"
             f"🆔 Username: {get_username(message.from_user)}\n"
             f"🏙️ Город: {city}\n"
             f"📞 Телефон: {phone}\n"
@@ -996,6 +1075,8 @@ async def skip_photo(message: Message, state: FSMContext, bot: Bot):
         print(f"❌ Ошибка в skip_photo: {e}")
         await message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")
         await state.clear()
+
+# ============ ЗАПРОСЫ ПОМОЩИ (ОБНОВЛЕННЫЕ С ВЕРИФИКАЦИЕЙ) ============
 
 @router.message(HelpRequest.waiting_for_category)
 async def request_category_handler(message: Message, state: FSMContext):
@@ -1035,6 +1116,82 @@ async def request_fullname_handler(message: Message, state: FSMContext):
     
     fullname = message.text.strip()
     await state.update_data(fullname=fullname)
+    
+    # НОВЫЙ ЭТАП: Позывной (ОБЯЗАТЕЛЬНО для бойцов)
+    await message.answer(
+        "🎖️ Введите ваш **позывной** (обязательно):\n"
+        "(это поможет идентифицировать получателя помощи)",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpRequest.waiting_for_call_sign)
+
+@router.message(HelpRequest.waiting_for_call_sign)
+async def request_call_sign_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    call_sign = message.text.strip()
+    if not call_sign or len(call_sign) < 2:
+        await message.answer("❌ Пожалуйста, введите корректный позывной (минимум 2 символа):")
+        return
+    
+    await state.update_data(call_sign=call_sign)
+    
+    # НОВЫЙ ЭТАП: Подразделение/часть (ОБЯЗАТЕЛЬНО)
+    await message.answer(
+        "🏛️ Укажите ваше **подразделение/воинскую часть** (обязательно):\n"
+        "(например, 'В/Ч 12345' или '123-й полк')",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="← Назад в главное меню")]],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpRequest.waiting_for_unit)
+
+@router.message(HelpRequest.waiting_for_unit)
+async def request_unit_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    unit = message.text.strip()
+    if not unit or len(unit) < 2:
+        await message.answer("❌ Пожалуйста, введите корректное название подразделения:")
+        return
+    
+    await state.update_data(unit=unit)
+    
+    # Опционально: контакт командира
+    await message.answer(
+        "📞 Укажите **контакт командира** (необязательно, но желательно):\n"
+        "(можно написать 'Нет' или пропустить)",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="⏭ Пропустить")],
+                [KeyboardButton(text="← Назад в главное меню")]
+            ],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(HelpRequest.waiting_for_commander_contact)
+
+@router.message(HelpRequest.waiting_for_commander_contact)
+async def request_commander_handler(message: Message, state: FSMContext):
+    if message.text == "← Назад в главное меню":
+        await state.clear()
+        await cmd_start(message, state)
+        return
+    
+    if message.text == "⏭ Пропустить":
+        await state.update_data(commander_contact="Не указан")
+    else:
+        await state.update_data(commander_contact=message.text.strip())
     
     await message.answer(
         "📝 Опишите подробно, что вам нужно\n"
@@ -1101,11 +1258,26 @@ async def request_phone_handler(message: Message, state: FSMContext, bot: Bot):
     category = user_data.get('request_category', 'Запрос помощи')
     details = user_data.get('request_details', '')
     city = user_data.get('city', 'Не указан')
+    call_sign = user_data.get('call_sign', 'Не указан')
+    unit = user_data.get('unit', 'Не указана')
+    commander_contact = user_data.get('commander_contact', 'Не указан')
     request_id = generate_request_id()
+    
+    # Проверяем заполнение обязательных полей
+    if not call_sign or call_sign == 'Не указан' or not unit or unit == 'Не указана':
+        await message.answer(
+            "❌ Ошибка! Обязательные поля (позывной и подразделение) не заполнены.\n"
+            "Пожалуйста, начните заявку заново: /need"
+        )
+        await state.clear()
+        return
     
     await message.answer(
         f"✅ Ваш запрос принят!\n\n"
         f"👤 ФИО: {fullname}\n"
+        f"🎖️ Позывной: {call_sign}\n"
+        f"🏛️ Подразделение: {unit}\n"
+        f"📞 Командир: {commander_contact}\n"
         f"📋 Категория: {category}\n"
         f"📝 Детали: {details}\n"
         f"🏙️ Город: {city}\n"
@@ -1119,6 +1291,9 @@ async def request_phone_handler(message: Message, state: FSMContext, bot: Bot):
         bot,
         f"🆘 ЗАПРОС ПОМОЩИ #{request_id}",
         f"👤 ФИО: {fullname}\n"
+        f"🎖️ Позывной: {call_sign}\n"
+        f"🏛️ Подразделение: {unit}\n"
+        f"📞 Командир: {commander_contact}\n"
         f"🆔 Username: {get_username(message.from_user)}\n"
         f"🏙️ Город: {city}\n"
         f"📞 Телефон: {phone}\n"
